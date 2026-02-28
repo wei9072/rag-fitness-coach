@@ -9,7 +9,7 @@ def main():
     # 啟動 FastAPI 後端
     print("啟動 API 伺服器 (FastAPI)...")
     api_process = subprocess.Popen(
-        [sys.executable, "-m", "uvicorn", "src.api:app", "--port", "8000"],
+        [sys.executable, "-m", "uvicorn", "src.api.server:app", "--port", "8000"],
         stdout=sys.stdout,
         stderr=sys.stderr
     )
