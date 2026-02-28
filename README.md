@@ -82,12 +82,10 @@ python src/indexer.py
 
 ### 5. 啟動服務
 
-```bash
-# 終端 1：啟動 FastAPI 後端
-uvicorn src.api:app --port 8000
+我們提供了一個主要入口 `main.py`，可以直接同時啟動 FastAPI 後端與 Streamlit 前端：
 
-# 終端 2：啟動 Streamlit 前端
-streamlit run src/app.py
+```bash
+python main.py
 ```
 
 打開瀏覽器前往 `http://localhost:8501` 即可使用。
