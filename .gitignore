@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+*.egg
+
+# 環境變數（含 API Key，絕對不能上傳）
+.env
+
+# FAISS 索引（由 indexer.py 產出，不需版控）
+data/faiss_index/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Streamlit
+.streamlit/
+
+# 虛擬環境
+venv/
+.venv/
+env/
