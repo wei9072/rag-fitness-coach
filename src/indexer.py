@@ -10,6 +10,7 @@ import re
 from langchain_community.vectorstores import FAISS
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_core.documents import Document
+from langchain_community.document_loaders import PyPDFLoader
 from langchain_groq import ChatGroq
 from langchain_core.messages import SystemMessage, HumanMessage
 import time
@@ -106,10 +107,44 @@ def load_txt_documents(path: pathlib.Path) -> list[Document]:
     return docs
 
 
+def load_pdf_documents(path: pathlib.Path) -> list[Document]:
+    """讀取 PDF 檔，並用相同的 Chunk 邏輯切塊。"""
+    loader = PyPDFLoader(str(path))
+    pages = loader.load()
+    
+    # 全部頁的內容先合併起來，再依段落切塊
+    content = "\n\n".join([page.page_content for page in pages])
+    
+    if not content.strip():
+        return []
+        
+    paragraphs = [p.strip() for p in content.split("\n\n") if p.strip()]
+    docs = []
+
+    for para in paragraphs:
+        date = _parse_date(para)
+        meta = {"date": date, "source": path.name}
+
+        if len(para) <= CHUNK_SIZE:
+            docs.append(Document(page_content=para, metadata=meta))
+        else:
+            start = 0
+            while start < len(para):
+                chunk = para[start : start + CHUNK_SIZE]
+                docs.append(Document(page_content=chunk, metadata=meta))
+                start += CHUNK_SIZE - CHUNK_OVERLAP
+
+    return docs
+
+
 # ─────────────────────────────────────────────────────────
 # 統一掃描
 # ─────────────────────────────────────────────────────────
-LOADERS = {".json": load_json_documents, ".txt": load_txt_documents}
+LOADERS = {
+    ".json": load_json_documents, 
+    ".txt": load_txt_documents,
+    ".pdf": load_pdf_documents
+}
 
 
 def collect_documents() -> list[Document]:
@@ -123,7 +158,7 @@ def collect_documents() -> list[Document]:
             all_docs.extend(docs)
 
     if not all_docs:
-        raise FileNotFoundError(f"在 {DATA_DIR} 中找不到任何 .json 或 .txt 檔案")
+        raise FileNotFoundError(f"在 {DATA_DIR} 中找不到任何支援的檔案 (.txt, .json, .pdf)")
 
     with_date = sum(1 for d in all_docs if d.metadata.get("date"))
     print(f"\n✅ 合計 {len(all_docs)} 個區塊，其中 {with_date} 個有日期 Metadata")
