@@ -11,13 +11,10 @@ from langchain_community.vectorstores import FAISS
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_core.documents import Document
 
-# ── 路徑設定 ──────────────────────────────────────────────
-BASE_DIR  = pathlib.Path(__file__).resolve().parent.parent
-DATA_DIR  = BASE_DIR / "data"
-INDEX_DIR = DATA_DIR / "faiss_index"
+# ── 路徑與設定 ───────────────────────────────────────────
+from src.config.settings import BASE_DIR, INDEX_DIR, MODEL_NAME
 
-# ── Embedding 模型 ───────────────────────────────────────
-MODEL_NAME = "BAAI/bge-small-zh-v1.5"
+DATA_DIR  = BASE_DIR / "data"
 
 # ── TXT 切塊設定 ─────────────────────────────────────────
 CHUNK_SIZE    = 300
