@@ -76,8 +76,10 @@ TXT 範例格式（以雙換行分隔每次訓練）：
 
 ### 4. 建立索引
 
+請使用 module 模式執行，以確保 Python 能夠抓到模組路徑：
+
 ```bash
-python src/indexer.py
+python -m src.indexer
 ```
 
 ### 5. 啟動服務
