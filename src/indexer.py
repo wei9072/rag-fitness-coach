@@ -7,22 +7,28 @@ import json
 import pathlib
 import re
 
-from langchain_community.vectorstores import FAISS
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_core.documents import Document
 from langchain_community.document_loaders import PyPDFLoader
+from langchain_experimental.text_splitter import SemanticChunker
 from langchain_groq import ChatGroq
 from langchain_core.messages import SystemMessage, HumanMessage
 import time
 
-# ── 路徑與設定 ───────────────────────────────────────────
+# ── Embedding 模型與切塊器 ─────────────────────────────────
 from src.config.settings import BASE_DIR, INDEX_DIR, MODEL_NAME, LLM_MODEL, GROQ_API_KEY
 
 DATA_DIR  = BASE_DIR / "data"
 
-# ── TXT 切塊設定 ─────────────────────────────────────────
-CHUNK_SIZE    = 300
-CHUNK_OVERLAP = 50
+print("⏳ 載入 SemanticChunker 使用的 Embedding 模型...")
+_chunking_embeddings = HuggingFaceEmbeddings(
+    model_name=MODEL_NAME,
+    encode_kwargs={"normalize_embeddings": True},
+)
+semantic_chunker = SemanticChunker(
+    _chunking_embeddings, breakpoint_threshold_type="percentile"
+)
+print("✅ SemanticChunker 初始化完成")
 
 
 # ─────────────────────────────────────────────────────────
@@ -81,58 +87,39 @@ def load_json_documents(path: pathlib.Path) -> list[Document]:
 
 
 def load_txt_documents(path: pathlib.Path) -> list[Document]:
-    """讀取 TXT 檔，依段落切塊為 LangChain Document。"""
+    """讀取 TXT 檔，使用 SemanticChunker 進行語意切塊。"""
     with open(path, "r", encoding="utf-8") as f:
         content = f.read().strip()
 
     if not content:
         return []
 
-    paragraphs = [p.strip() for p in content.split("\n\n") if p.strip()]
-    docs = []
-
-    for para in paragraphs:
-        date = _parse_date(para)
-        meta = {"date": date, "source": path.name}
-
-        if len(para) <= CHUNK_SIZE:
-            docs.append(Document(page_content=para, metadata=meta))
-        else:
-            start = 0
-            while start < len(para):
-                chunk = para[start : start + CHUNK_SIZE]
-                docs.append(Document(page_content=chunk, metadata=meta))
-                start += CHUNK_SIZE - CHUNK_OVERLAP
+    # 直接使用 SemanticChunker 切出 Documents
+    docs = semantic_chunker.create_documents([content])
+    
+    # 附加 Metadata
+    for doc in docs:
+        date = _parse_date(doc.page_content)
+        doc.metadata = {"date": date, "source": path.name}
 
     return docs
 
 
 def load_pdf_documents(path: pathlib.Path) -> list[Document]:
-    """讀取 PDF 檔，並用相同的 Chunk 邏輯切塊。"""
+    """讀取 PDF 檔，使用 SemanticChunker 進行語意切塊。"""
     loader = PyPDFLoader(str(path))
     pages = loader.load()
     
-    # 全部頁的內容先合併起來，再依段落切塊
-    content = "\n\n".join([page.page_content for page in pages])
+    content = "\n\n".join([page.page_content for page in pages]).strip()
     
-    if not content.strip():
+    if not content:
         return []
         
-    paragraphs = [p.strip() for p in content.split("\n\n") if p.strip()]
-    docs = []
+    docs = semantic_chunker.create_documents([content])
 
-    for para in paragraphs:
-        date = _parse_date(para)
-        meta = {"date": date, "source": path.name}
-
-        if len(para) <= CHUNK_SIZE:
-            docs.append(Document(page_content=para, metadata=meta))
-        else:
-            start = 0
-            while start < len(para):
-                chunk = para[start : start + CHUNK_SIZE]
-                docs.append(Document(page_content=chunk, metadata=meta))
-                start += CHUNK_SIZE - CHUNK_OVERLAP
+    for doc in docs:
+        date = _parse_date(doc.page_content)
+        doc.metadata = {"date": date, "source": path.name}
 
     return docs
 
@@ -232,15 +219,11 @@ def build_index():
         date_str = d.metadata.get("date") or "無日期"
         print(f"  [{i}] ({date_str}) {d.page_content[:50]}...")
 
-    print(f"\n⏳ 載入 Embedding 模型 {MODEL_NAME} ...")
-    embeddings = HuggingFaceEmbeddings(
-        model_name=MODEL_NAME,
-        encode_kwargs={"normalize_embeddings": True},
-    )
-    print("✅ 模型載入完成")
-
+    print(f"\n⏳ 準備建立 FAISS 索引...")
+    # 這裡直接拿剛才初始化的 Embedding 模型即可
     # 使用 LangChain FAISS 建立向量索引
-    vectorstore = FAISS.from_documents(docs, embeddings)
+    from langchain_community.vectorstores import FAISS
+    vectorstore = FAISS.from_documents(docs, _chunking_embeddings)
     print(f"✅ FAISS 索引包含 {vectorstore.index.ntotal} 筆向量")
 
     # 儲存
