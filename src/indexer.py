@@ -11,8 +11,6 @@ from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_core.documents import Document
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_experimental.text_splitter import SemanticChunker
-from langchain_groq import ChatGroq
-from langchain_core.messages import SystemMessage, HumanMessage
 import time
 
 # ── Embedding 模型與切塊器 ─────────────────────────────────
@@ -20,9 +18,10 @@ from src.config.settings import BASE_DIR, INDEX_DIR, MODEL_NAME, LLM_MODEL, GROQ
 
 DATA_DIR  = BASE_DIR / "data"
 
-print("⏳ 載入 SemanticChunker 使用的 Embedding 模型...")
+print("⏳ 載入 SemanticChunker 使用的 Embedding 模型 (GPU)...")
 _chunking_embeddings = HuggingFaceEmbeddings(
     model_name=MODEL_NAME,
+    model_kwargs={"device": "cuda"},
     encode_kwargs={"normalize_embeddings": True},
 )
 semantic_chunker = SemanticChunker(
@@ -153,67 +152,12 @@ def collect_documents() -> list[Document]:
 
 
 # ─────────────────────────────────────────────────────────
-# LLM 語意擴充 (Semantic Enrichment)
-# ─────────────────────────────────────────────────────────
-_CHUNK_ENHANCE_SYSTEM = (
-    "你是一個專職資料前處理的 AI 助手。請分析以下送進來的資料區塊（可能是文字紀錄或是未來 OCR 識別出的零散文字），"
-    "並提取出：1. 主要訓練部位 (例如：胸、背、下肢、核心)  2. 核心運動項目  3. 用一句話總結這段內容。"
-    "請用極簡的條列式輸出，不要打招呼、不要任何廢話。你的輸出將直接被作為向量檢索的『語意擴充標籤』，提升檢索命中率。"
-)
-
-try:
-    enhancer_llm = ChatGroq(
-        model=LLM_MODEL,
-        api_key=GROQ_API_KEY,
-        temperature=0.0,
-        max_tokens=150,
-    )
-except Exception as e:
-    enhancer_llm = None
-    print(f"⚠️ 無法初始化 LLM 語意分析器：{e}")
-
-def enhance_with_llm(docs: list[Document]) -> list[Document]:
-    """使用 LLM 將原本的 Chunk 加上語意標籤，解決隱含語意 (如只寫臥推但沒寫練胸) 搜不到的問題。"""
-    if not enhancer_llm:
-        return docs
-
-    print(f"\n🧠 啟動 LLM 語意輔助 Chunking (共 {len(docs)} 個區塊)...")
-    enhanced_docs = []
-    
-    for i, doc in enumerate(docs):
-        text = doc.page_content
-        print(f"  - 正在分析區塊 {i+1}/{len(docs)}...")
-        try:
-            resp = enhancer_llm.invoke([
-                SystemMessage(content=_CHUNK_ENHANCE_SYSTEM),
-                HumanMessage(content=text)
-            ])
-            semantic_tags = resp.content.strip()
-            
-            # 將 LLM 生成的語意標籤與原文本組合
-            new_content = f"【LLM 語意擴充標籤】\n{semantic_tags}\n\n【原始內容】\n{text}"
-            doc.page_content = new_content
-            doc.metadata["semantic_tags"] = semantic_tags
-            
-        except Exception as e:
-            print(f"    ⚠️ LLM 分析失敗 (區塊 {i+1})：{e}")
-            
-        enhanced_docs.append(doc)
-        time.sleep(0.4)  # 稍微延遲避免頻繁觸發 Rate Limit
-        
-    return enhanced_docs
-
-
-# ─────────────────────────────────────────────────────────
 # 主流程
 # ─────────────────────────────────────────────────────────
 def build_index():
-    """讀取 → LLM 語意分析 → 向量化 → 建立 FAISS 索引 → 儲存。"""
+    """讀取 → SemanticChunker(語意切塊) → FAISS 索引 → 儲存。"""
     print("📂 掃描 data/ 資料夾...")
     docs = collect_documents()
-    
-    # 加入 LLM 語意分析與擴充步驟 (Semantic Enrichment Chunking)
-    docs = enhance_with_llm(docs)
 
     for i, d in enumerate(docs):
         date_str = d.metadata.get("date") or "無日期"

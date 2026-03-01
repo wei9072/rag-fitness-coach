@@ -7,10 +7,11 @@ class EmbeddingService:
 
     def __new__(cls):
         if cls._instance is None:
-            print("⏳ 載入 Embedding 模型...")
+            print("⏳ 載入 Embedding 模型 (GPU)...")
             cls._instance = super(EmbeddingService, cls).__new__(cls)
             cls._instance.model = HuggingFaceEmbeddings(
                 model_name=MODEL_NAME,
+                model_kwargs={"device": "cuda"},
                 encode_kwargs={"normalize_embeddings": True},
             )
             print("✅ Embedding 模型載入完成")
