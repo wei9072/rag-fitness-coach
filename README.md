@@ -114,6 +114,21 @@ graph TD
     E --> F[Groq 生成在地化回答]
 ```
 
+## 🌟 開發史：`llm-function-routing` 分支演進
+
+本分支實現了專案從「簡易 MVP 腳本」跨入「企業級架構」的三大重構里程碑：
+
+1. **模組化重構 (Modular Architecture)**
+   - 將原本肥大的單一檔案拆分為標準 `src/` 領域驅動架構 (`api`, `services`, `models`, `config`)。
+   - 全面改採 Pydantic 管理資料綱要，並實作單例模式 (Singleton) 服務降載。
+2. **導入意圖路由 (LLM Intent Routing)**
+   - 捨棄死板的正則表達式 (Regex) 關鍵字猜測。
+   - 導入 LangChain `with_structured_output`，利用 Llama 3 毫秒級智能判斷「時間」、「統計」與「語意搜尋」意圖，甚至自動提煉英文/中文搜尋關鍵字。
+3. **GPU 解析與防爆機制 (GPU Semantic Chanking & Payload Limits)**
+   - 擴充 `pypdf` 支援，成功匯入數千頁厚重的原文生物力學與教練手冊。
+   - 捨棄固定字數切割，升級為 **LangChain SemanticChunker**，並結合本機 **NVIDIA GTX 1050 Ti (CUDA 11.8)** 達成極速語意識別與 FAISS 向量建置。
+   - 因應免費 Groq API 嚴苛的 TPM/TPD 限制，開發了 Streamlit 設定面板，讓使用者可動態輸入新金鑰，並實作「策略 A (極限省流)」與「策略 B (智慧截斷)」徹底解決 `413 Payload Too Large` 崩潰問題。
+
 ## 🧩 目前方法與改進方向
 
 ### 1. 簡單的提示詞工程
