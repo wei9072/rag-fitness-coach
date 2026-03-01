@@ -4,7 +4,7 @@ from src.api.endpoints import api_router
 
 def create_app() -> FastAPI:
     """工廠模式建立 FastAPI 實例"""
-    app = FastAPI(title="個人化 AI 健身教練 (模組化架構)", version="2.0.0")
+    app = FastAPI(title="個人化 AI 健身建議系統 (模組化架構)", version="2.0.0")
     
     # 掛載 CORS，允許跨域
     app.add_middleware(

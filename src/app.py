@@ -10,12 +10,12 @@ API_URL = "http://localhost:8000/api/chat"
 
 # ── 頁面配置 ──────────────────────────────────────────────
 st.set_page_config(
-    page_title="RAG 健身教練",
-    page_icon="🏋️",
-    layout="centered",
+    page_title="RAG 健身建議系統",
+    page_icon="🏋️‍♂️",
+    layout="wide",
 )
 
-st.title("🏋️ RAG 健身教練")
+st.title("🏋️ RAG 健身建議系統")
 st.caption("本地隱私檢索 + Groq 雲端生成 | Query Rewriting + 時間意圖偵測")
 
 # ── 側邊欄 ────────────────────────────────────────────────

@@ -4,7 +4,7 @@ import time
 import os
 
 def main():
-    print("🚀 啟動 RAG 健身教練系統...")
+    print("🚀 啟動 RAG 健身建議系統...")
     
     # 啟動 FastAPI 後端
     print("啟動 API 伺服器 (FastAPI)...")

@@ -3,7 +3,7 @@ from src.config.settings import LLM_MODEL, GROQ_API_KEY
 from src.services.llm_factory import get_llm
 
 _SYSTEM_PROMPT_BASE = (
-    "你是一位擁有 10 年經驗的專業健身教練，根據使用者的訓練紀錄並結合自身專業知識來回答問題。\n\n"
+    "你是一位擁有 10 年經驗的專業健身顧問，根據使用者的訓練紀錄並結合自身專業知識來提供建議與回答問題。\n\n"
     "## 回覆原則\n"
     "1. **分析能力**：主動分析使用者的訓練趨勢與進步幅度，例如重量變化、組數提升等。\n"
     "2. **訓練建議**：根據紀錄給出下次訓練的具體建議，包括重量調整、組數安排、動作改進方向。\n"
