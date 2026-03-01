@@ -26,17 +26,23 @@
 
 ## 📁 專案結構
 
+## 📁 專案結構
+
 ```
 rag-fitness-coach/
 ├── data/
-│   ├── Train.txt            # 你的健身紀錄（TXT 格式）
+│   ├── Train.txt            # 你的健身紀錄（文字格式）
+│   ├── *.pdf                # 你的參考書籍與教練手冊（PDF 格式）
 │   └── faiss_index/         # FAISS 索引（由 indexer 產出）
 ├── src/
-│   ├── indexer.py           # 讀取資料 → 向量化 → 建立 FAISS 索引
-│   ├── api.py               # FastAPI 伺服器（RAG pipeline）
+│   ├── api/                 # FastAPI 伺服器端點 (endpoints, server)
+│   ├── config/              # 環境變數與全域設定 (settings)
+│   ├── models/              # Pydantic 資料綱要 (schemas)
+│   ├── services/            # 核心商業邏輯 (llm_service, intent_router, vector_service, embedding_service)
+│   ├── indexer.py           # 向量化與建立 FAISS 索引的 ETL 腳本
 │   └── app.py               # Streamlit 聊天介面
+├── main.py                  # 啟動 FastAPI 與 Streamlit 的主程式
 ├── .env.example             # 環境變數範本
-├── .gitignore
 ├── requirements.txt
 └── README.md
 ```
@@ -95,28 +101,17 @@ python main.py
 
 ## 📐 架構圖
 
-```
-使用者提問
-    │
-    ▼
-Query Rewriting（Groq LLM 改寫為搜尋關鍵詞）
-    │
-    ▼
-┌─────────────── 簡易規則路由 ───────────────┐
-│                                             │
-│  全量意圖？ ──是──▶ 回傳所有紀錄             │
-│    │否                                      │
-│  時間意圖？ ──是──▶ 按日期排序取最新 N 筆    │
-│    │否                                      │
-│  FAISS 語意搜尋（Top-K 最相關紀錄）          │
-│                                             │
-└─────────────────────────────────────────────┘
-    │
-    ▼
-System Prompt（提示詞工程）+ 紀錄 + 問題 → Groq LLM 生成回答
-    │
-    ▼
-Streamlit 顯示回覆 + 參考紀錄
+## 📐 架構圖
+
+```mermaid
+graph TD
+    A[使用者提問] --> B[LLM 意圖路由 IntentRouter]
+    B -->|全量意圖| C[撈取最新 N 筆資料]
+    B -->|時間排序意圖| C
+    B -->|語意搜尋意圖| D[FAISS 向量檢索]
+    C --> E
+    D --> E[LLMService 組合 Prompt]
+    E --> F[Groq 生成在地化回答]
 ```
 
 ## 🧩 目前方法與改進方向
@@ -162,39 +157,29 @@ SYSTEM_PROMPT = """
 
 ### 2. 從簡易規則路由邁向「語意路由 (Semantic Routing)」
 
-**目前做法：基於正則表達式的啟發式路由**
+### 2. 語意路由 (Semantic Routing) 實作機制
 
-目前系統採用 **正則表達式（Regex）** 來捕捉問題中的關鍵字，從而決定走哪一條檢索路徑：
+**目前做法：基於 LLM 結構化輸出 (Structured Output) 的語意路由**
+
+目前系統已經淘汰了早期的正規表達式 (Regex)，全面升級為由 Llama 3 驅動的**大模型語意分類器**。我們使用 LangChain 的 `with_structured_output` 綁定 Pydantic Schema，要求 LLM 在毫秒間將使用者的每一句話歸類：
 
 ```python
-# 全量意圖（統計類問題）
-_ALL_KEYWORDS = re.compile(r"幾筆|幾次|多少筆|總共|全部|所有|統計|總結")
-
-# 時間意圖（排序類問題）
-_TEMPORAL_KEYWORDS = re.compile(r"最近|最新|上次|前(\d+)筆|最近(\d+)筆")
+# src/models/schemas.py
+class RouteDecision(BaseModel):
+    intent: Literal["semantic", "temporal", "all"]  # 意圖分類
+    n_count: int                                    # 需抓取的數量
+    refined_query: str                              # 提煉後的搜尋關鍵字
 ```
 
 | 偵測到的意圖 | 目前路由路徑 | 範例 |
 |------------|------|------|
-| 全量意圖 | 回傳所有紀錄 | 「我有幾筆資料」「總共練了幾次」 |
-| 時間意圖 | 按日期排序取 N 筆 | 「最近 5 筆」「上次練什麼」 |
-| 無特殊意圖 | FAISS 語意搜尋 Top-K | 「壓肩怎麼進步」 |
+| 全量意圖 `all` | 回傳所有紀錄 | 「我有幾筆資料」「總共練了幾次」「幫我統計一下」 |
+| 時間意圖 `temporal`| 按日期排序取 N 筆 | 「最近 5 筆」「前兩次練什麼」「上禮拜的課表」 |
+| 語意搜尋 `semantic`| FAISS 語意搜尋 | 「壓肩怎麼進步」「教我練背的生物力學」 |
 
-**⚠️ 目前限制 (Regex 的瓶頸)**
-
-- **語意理解不足**：正則表達式只能匹配固定的字面詞彙，無法理解使用者的真實意圖。例如問「我練了多久時間了」，語意上是統計類問題，但因為沒有觸發關鍵字，會錯誤地掉進純向量搜尋。
-- **維護成本高**：隨著系統能回答的問題類型變多，if-else 路由規則會呈指數級膨脹，且容易發生規則衝突。
-
-**🔧 下一步進化：語意路由 (Semantic Routing)**
-
-為了打造企業級的 RAG 系統，接下來的改版重點會將目前的硬體規則升級為**語意路由架構**：
-
-| 技術升級項目 | 實作說明與預期效益 |
-|---------|------|
-| **Semantic Router 導入** | 取代 Regex，預先定義各種「意圖向量 (Intent Vectors)」。當使用者提問時，比較問題與這些意圖向量的距離，以數學方式精準決定路由。 |
-| **LLM 意圖分類器** | 利用輕量且極速的 LLM (如 Llama 3 8B) 做零樣本 (Zero-shot) 的意圖判斷，能聽懂比 Regex 更複雜的口語變化。 |
-| **LangChain Router Chain** | 將現有架構重構為 `MultiPromptChain` 或功能更完整的 Agent Agentic Workflow，讓系統具備多步思考 (Multi-hop Reasoning) 的能力。 |
-| **自我反思與確認** | 遇到語意模糊的問題時，系統不會盲目猜測路由，而是主動發起澄清問題 (Clarifying Questions) 向使用者確認意圖。 |
+**優勢與突破**
+- **聽懂弦外之音**：無論使用者怎麼換句話說，LLM 都能透過上下文推斷真實意圖，不再受限於死板的關鍵字觸發。
+- **自動摘要關鍵詞**：當使用者問「教練，你可以告訴我上一次做深蹲的時候，大約用了多少重量嗎？」，路由層會自動萃取出乾淨的 `深蹲 重量` 作為精準的 FAISS 向量搜尋關鍵字。
 
 ## ⚙️ 自訂設定 / 預防 API Rate Limits
 
