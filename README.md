@@ -10,8 +10,9 @@
 - 🧠 **自動語意切塊 (Semantic Chunking)**：放棄傳統固定字數，採用 LangChain SemanticChunker 結合語意演算法智慧切割文檔。
 - 📚 **多元文件支援**：輕鬆吞入並解析純文字 (`.txt`) 或排版複雜的英文/中文 PDF 文檔 (`.pdf`)。
 - 🧭 **LLM 意圖路由 (Intent Routing)**：採用 LLM 結構化輸出 (Structured Output) 判讀意圖，智能導流至全量統計、時間排序、或語意向量搜尋。
-- ⚡ **極速生成與防爆機制**：透過 Groq API 呼叫 Llama 3 系列模型，並搭載動態 Token 保護策略 (Strategy A/B) 預防免費金鑰超過 Payload 限制。
-- ⚙️ **動態設定面板**：在 Streamlit 側邊欄即可隨時安插新的 API Key 或切換進階的檢索策略參數。
+- ⚡ **極速生成與防爆機制**：支援動態 Token 保護策略 (Strategy A/B) 預防免費金鑰超過 Payload 限制。
+- ⚙️ **動態設定面板**：在 Streamlit 側邊欄即可隨時安插新的 API Key，隨意抽換底層驅動模型。
+- 🧱 **SOLID 解耦與多模型支援**：導入依賴反轉 (DIP) 與工廠模式 (Factory Pattern)，系統可無縫在 Groq, OpenAI 與 Ollama (本地離線模型) 間靈活切換，改寫核心不必更動商業邏輯。
 
 ## 🛠️ 技術堆疊
 
@@ -20,11 +21,11 @@
 | 框架 | [LangChain](https://python.langchain.com/) |
 | 向量化模型 | [BAAI/bge-small-zh-v1.5](https://huggingface.co/BAAI/bge-small-zh-v1.5)（~90MB） |
 | 向量庫 | [FAISS](https://github.com/facebookresearch/faiss)（CPU） |
-| 雲端 LLM | [Groq](https://groq.com/) — Llama 3.3 70B |
+| 雲端 LLM | [Groq](https://groq.com/)、[OpenAI](https://openai.com/) |
+| 本地 LLM | [Ollama](https://ollama.com/) |
 | 後端 API | [FastAPI](https://fastapi.tiangolo.com/) |
 | 前端介面 | [Streamlit](https://streamlit.io/) |
 
-## 📁 專案結構
 
 ## 📁 專案結構
 
@@ -101,8 +102,6 @@ python main.py
 
 ## 📐 架構圖
 
-## 📐 架構圖
-
 ```mermaid
 graph TD
     A[使用者提問] --> B[LLM 意圖路由 IntentRouter]
@@ -127,7 +126,10 @@ graph TD
 3. **GPU 解析與防爆機制 (GPU Semantic Chanking & Payload Limits)**
    - 擴充 `pypdf` 支援，成功匯入數千頁厚重的原文生物力學與教練手冊。
    - 捨棄固定字數切割，升級為 **LangChain SemanticChunker**，並結合本機 **NVIDIA GTX 1050 Ti (CUDA 11.8)** 達成極速語意識別與 FAISS 向量建置。
-   - 因應免費 Groq API 嚴苛的 TPM/TPD 限制，開發了 Streamlit 設定面板，讓使用者可動態輸入新金鑰，並實作「策略 A (極限省流)」與「策略 B (智慧截斷)」徹底解決 `413 Payload Too Large` 崩潰問題。
+   - 因應免費 API 嚴苛的限制，開發了 Streamlit 設定面板，實作「策略 A (極限省流)」與「策略 B (智慧截斷)」徹底解決 Payload 崩潰問題。
+4. **多模型切換工廠 (LLM Factory)**
+   - 貫徹 SOLID 依賴反轉原則 (DIP)，將 ChatModel 初始化從核心服務中剝離。
+   - 實作工廠模式，支援從 Streamlit 介面一鍵切換 Groq (Llama3)、OpenAI (GPT-4o) 以及 Ollama 本地離線模型。
 
 ## 🧩 目前方法與改進方向
 

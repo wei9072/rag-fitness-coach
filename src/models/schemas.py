@@ -5,8 +5,11 @@ from pydantic import BaseModel, Field
 class ChatRequest(BaseModel):
     question: str
     api_key: str | None = None
+    llm_provider: str = "groq"
+    model_name: str | None = None
     is_paid: bool = False
     strategy: str = "B"
+    user_profile: str | None = None
 
 class ChatResponse(BaseModel):
     answer: str

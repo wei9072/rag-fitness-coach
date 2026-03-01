@@ -12,3 +12,4 @@ langchain-groq
 langchain-huggingface
 pypdf
 langchain-experimental
+langchain-openai

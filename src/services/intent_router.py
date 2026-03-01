@@ -1,10 +1,14 @@
-from langchain_groq import ChatGroq
 from langchain_core.messages import SystemMessage, HumanMessage
 from src.config.settings import LLM_MODEL, GROQ_API_KEY
 from src.models.schemas import RouteDecision
+from src.services.retrieval_strategy import BaseRetriever, SemanticRetriever, TemporalRetriever, AllRetriever
+from src.services.llm_factory import get_llm
 
 class IntentRouter:
-    """專責將用戶提問透過輕量化 LLM 來判斷意圖與路由"""
+    """
+    實踐 SOLID 單一職責原則 (SRP) 與 Factory Pattern
+    負責將用戶提問透過輕量化 LLM 來判斷意圖，並回傳對應的檢索實體 (Strategy)
+    """
     def __init__(self):
         self._ROUTER_SYSTEM = (
             "你是一個健身紀錄檢索路由助手。"
@@ -15,17 +19,30 @@ class IntentRouter:
             "如果是 'semantic'，請同時提供一個優化後的簡短關鍵詞。"
         )
 
-    def route_query(self, question: str, api_key: str = None, is_paid: bool = False) -> RouteDecision:
-        """根據客戶問題，決定檢索方式與關鍵字"""
-        target_model = "llama-3.3-70b-versatile" if is_paid else LLM_MODEL
+    def route_query(self, question: str, api_key: str = None, is_paid: bool = False, llm_provider: str = "groq", model_name: str = None) -> tuple[BaseRetriever, str]:
+        """
+        根據客戶問題，決定檢索方式與關鍵字
+        回傳 (Retriever策略物件, 提煉後的搜尋字串)
+        """
+        # 模型決定邏輯 (預設使用 .env 或是設定好的預設值)
+        # 對於 groq，根據是否付費給定較強的模型，其他 provider 則依 model_name 或內部預設
+        if not model_name:
+            if llm_provider == "groq":
+                model_name = "llama-3.3-70b-versatile" if is_paid else LLM_MODEL
+            elif llm_provider == "openai":
+                model_name = "gpt-4o-mini"
+            elif llm_provider == "ollama":
+                model_name = "llama3.1" # ollama 本地預設
+
         actual_api_key = api_key if api_key else GROQ_API_KEY
         
         try:
-            router_llm = ChatGroq(
-                model=target_model,
+            # 使用 DIP Factory 取得實例
+            router_llm = get_llm(
+                provider=llm_provider,
+                model_name=model_name,
                 api_key=actual_api_key,
-                temperature=0.0,
-                max_tokens=200,
+                temperature=0.0
             )
             structured_router = router_llm.with_structured_output(RouteDecision)
             
@@ -34,10 +51,18 @@ class IntentRouter:
                 HumanMessage(content=question),
             ])
             print(f"  🧠 Intent Router 分析: {decision.intent} | N={decision.n_count} | Query='{decision.refined_query}'")
-            return decision
+            
+            # 👇 Factory 邏輯：根據分類返回對應的 Strategy，後續調用方不需理會細節
+            if decision.intent == "all":
+                return AllRetriever(), decision.refined_query
+            elif decision.intent == "temporal":
+                return TemporalRetriever(decision.n_count), decision.refined_query
+            else:
+                return SemanticRetriever(), decision.refined_query
+
         except Exception as e:
             print(f"  ⚠️ LLM 路由拋出異常，將退回語意搜尋：{e}")
-            return RouteDecision(intent="semantic", n_count=5, refined_query=question)
+            return SemanticRetriever(), question
 
 # 出口單例
 intent_router = IntentRouter()
