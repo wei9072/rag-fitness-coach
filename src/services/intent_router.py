@@ -6,14 +6,6 @@ from src.models.schemas import RouteDecision
 class IntentRouter:
     """專責將用戶提問透過輕量化 LLM 來判斷意圖與路由"""
     def __init__(self):
-        self._router_llm = ChatGroq(
-            model=LLM_MODEL,
-            api_key=GROQ_API_KEY,
-            temperature=0.0,
-            max_tokens=200,
-        )
-        self.structured_router = self._router_llm.with_structured_output(RouteDecision)
-        
         self._ROUTER_SYSTEM = (
             "你是一個健身紀錄檢索路由助手。"
             "分析使用者的問題，決定最適合的檢索策略：\n"
@@ -23,10 +15,21 @@ class IntentRouter:
             "如果是 'semantic'，請同時提供一個優化後的簡短關鍵詞。"
         )
 
-    def route_query(self, question: str) -> RouteDecision:
+    def route_query(self, question: str, api_key: str = None, is_paid: bool = False) -> RouteDecision:
         """根據客戶問題，決定檢索方式與關鍵字"""
+        target_model = "llama-3.3-70b-versatile" if is_paid else LLM_MODEL
+        actual_api_key = api_key if api_key else GROQ_API_KEY
+        
         try:
-            decision = self.structured_router.invoke([
+            router_llm = ChatGroq(
+                model=target_model,
+                api_key=actual_api_key,
+                temperature=0.0,
+                max_tokens=200,
+            )
+            structured_router = router_llm.with_structured_output(RouteDecision)
+            
+            decision = structured_router.invoke([
                 SystemMessage(content=self._ROUTER_SYSTEM),
                 HumanMessage(content=question),
             ])

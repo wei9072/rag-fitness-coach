@@ -25,7 +25,9 @@ _chunking_embeddings = HuggingFaceEmbeddings(
     encode_kwargs={"normalize_embeddings": True},
 )
 semantic_chunker = SemanticChunker(
-    _chunking_embeddings, breakpoint_threshold_type="percentile"
+    _chunking_embeddings, 
+    breakpoint_threshold_type="percentile",
+    breakpoint_threshold_amount=60  # Lowered from default (95/80) to force more frequent splits, creating smaller chunks
 )
 print("✅ SemanticChunker 初始化完成")
 

@@ -15,5 +15,5 @@ if not GROQ_API_KEY or GROQ_API_KEY == "your_key_here":
 
 # ── 模型常數 ──────────────────────────────────────────────
 MODEL_NAME = "BAAI/bge-small-zh-v1.5"
-LLM_MODEL  = "llama-3.3-70b-versatile"
-TOP_K      = 10
+LLM_MODEL  = "llama-3.1-8b-instant"
+TOP_K      = 5

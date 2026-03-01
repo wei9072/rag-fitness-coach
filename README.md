@@ -6,12 +6,12 @@
 
 ## ✨ 特色功能
 
-- 🔒 **隱私優先**：資料切塊與向量搜尋 100% 在本地執行
-- 🧠 **Query Rewriting**：自動將口語化問題改寫為精準搜尋關鍵詞
-- 📅 **時間意圖偵測**：問「最近 5 筆紀錄」自動按日期排序
-- 🔍 **語意搜尋**：使用 FAISS + BGE-small-zh 進行中文向量檢索
-- ⚡ **極速生成**：透過 Groq API 呼叫 Llama 3.3 70B 模型
-- 🏗️ **LangChain 架構**：標準化的 RAG pipeline
+- 🔒 **隱私優先**：資料切塊與向量搜尋 100% 在本地執行，可運用本機 GPU (CUDA) 加速
+- 🧠 **自動語意切塊 (Semantic Chunking)**：放棄傳統固定字數，採用 LangChain SemanticChunker 結合語意演算法智慧切割文檔。
+- 📚 **多元文件支援**：輕鬆吞入並解析純文字 (`.txt`) 或排版複雜的英文/中文 PDF 文檔 (`.pdf`)。
+- 🧭 **LLM 意圖路由 (Intent Routing)**：採用 LLM 結構化輸出 (Structured Output) 判讀意圖，智能導流至全量統計、時間排序、或語意向量搜尋。
+- ⚡ **極速生成與防爆機制**：透過 Groq API 呼叫 Llama 3 系列模型，並搭載動態 Token 保護策略 (Strategy A/B) 預防免費金鑰超過 Payload 限制。
+- ⚙️ **動態設定面板**：在 Streamlit 側邊欄即可隨時安插新的 API Key 或切換進階的檢索策略參數。
 
 ## 🛠️ 技術堆疊
 
@@ -60,19 +60,11 @@ cp .env.example .env
 
 ### 3. 準備你的訓練紀錄
 
-將你的健身紀錄放入 `data/` 資料夾，支援 `.txt` 和 `.json` 格式。
+將你的健身紀錄或參考書籍放入 `data/` 資料夾，目前支援：
+- **純文字 (.txt, .json)**：例如傳統用 Line 紀錄的訓練日誌。
+- **文件檔案 (.pdf)**：自動使用 PyPDF 提取並拆解內容。
 
-TXT 範例格式（以雙換行分隔每次訓練）：
-
-```
-0131 1730練
-深蹲 空槓 12*1、40kg 12*1、60kg 8*1、80kg 3*1、90kg 5*3
-啞鈴肩推 16kg 8*4
-
-0129 1930練
-壓肩 79kg 12*3
-正手滑輪高位下拉 45kg 12*4
-```
+放入資料夾後，系統會自動幫你執行 Token 向量化。
 
 ### 4. 建立索引
 
@@ -204,13 +196,12 @@ _TEMPORAL_KEYWORDS = re.compile(r"最近|最新|上次|前(\d+)筆|最近(\d+)�
 | **LangChain Router Chain** | 將現有架構重構為 `MultiPromptChain` 或功能更完整的 Agent Agentic Workflow，讓系統具備多步思考 (Multi-hop Reasoning) 的能力。 |
 | **自我反思與確認** | 遇到語意模糊的問題時，系統不會盲目猜測路由，而是主動發起澄清問題 (Clarifying Questions) 向使用者確認意圖。 |
 
-## ⚙️ 自訂設定
+## ⚙️ 自訂設定 / 預防 API Rate Limits
 
-- **TOP_K**：`src/api.py` 中的 `TOP_K` 控制每次檢索的紀錄數量（預設 10）
-- **System Prompt**：`src/api.py` 中的 `SYSTEM_PROMPT` 可自訂 AI 教練的角色設定
-- **使用者資料**：在 `SYSTEM_PROMPT` 中修改使用者的身體數據與訓練目標
+由於我們使用了 Groq 免費方案，有極為嚴格的 TPM (Tokens Per Minute) 和 TPD (Tokens Per Day) 上限：
+- **若使用免費金鑰 (`llama-3.1-8b-instant`)**：建議在 Streamlit 前端側邊欄的【檢索策略】選用 **策略 A (極限省流)**，系統會只挑出最精準的 1 筆片段給 LLM 壓縮 Prompt，確保不會觸發 `413 Request Too Large` 錯誤。
+- **若使用付費版 (`llama-3.3-70b-versatile`)**：請勾選「💎 這是付費版 API Key」，即可解鎖 **策略 B (智慧截斷)**，享受更寬廣的 TOP_K 上下文脈絡能力與高智商推論。
 
 ## 📝 License
 
 MIT
-

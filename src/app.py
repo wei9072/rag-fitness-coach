@@ -20,6 +20,22 @@ st.caption("本地隱私檢索 + Groq 雲端生成 | Query Rewriting + 時間意
 
 # ── 側邊欄 ────────────────────────────────────────────────
 with st.sidebar:
+    st.header("⚙️ API 設定")
+    
+    user_api_key = st.text_input("Groq API Key", type="password", help="在此輸入自訂的 API Key，留空則使用系統預設")
+    is_paid_tier = st.checkbox("💎 這是付費版 (Pro) API Key", value=False)
+    
+    st.divider()
+    
+    search_strategy = st.radio(
+        "🧠 檢索策略 (Retrieval Strategy)",
+        options=["A", "B"],
+        index=1,
+        format_func=lambda x: "策略 A (極限省流 - 僅檢索 1 筆)" if x == "A" else "策略 B (智慧截斷 - 檢索 5 筆並截斷長文)"
+    )
+
+    st.divider()
+
     st.caption(
         "💡 **智慧檢索**\n\n"
         "- 系統會自動改寫問題為精準搜尋關鍵詞\n"
@@ -57,7 +73,13 @@ if prompt := st.chat_input("請輸入你的健身問題..."):
     with st.chat_message("assistant"):
         with st.spinner("思考中..."):
             try:
-                resp = requests.post(API_URL, json={"question": prompt}, timeout=30)
+                payload = {
+                    "question": prompt,
+                    "api_key": user_api_key if user_api_key.strip() else None,
+                    "is_paid": is_paid_tier,
+                    "strategy": search_strategy
+                }
+                resp = requests.post(API_URL, json=payload, timeout=30)
                 resp.raise_for_status()
                 data = resp.json()
                 answer          = data["answer"]

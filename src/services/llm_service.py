@@ -33,19 +33,24 @@ _SYSTEM_PROMPT = (
 
 class LLMService:
     """專責處理主線對話與 RAG Prompt 組裝"""
-    def __init__(self):
-        self._llm = ChatGroq(
-            model=LLM_MODEL,
-            api_key=GROQ_API_KEY,
-            temperature=0.3,
-            max_tokens=1024,
-        )
 
-    def generate_reply(self, question: str, context_chunks: list[str]) -> str:
+
+    def generate_reply(self, question: str, context_chunks: list[str], api_key: str = None, is_paid: bool = False, strategy: str = "B") -> str:
         """接收檢索結果與問題，交給 LLM 判讀並生成回文字串"""
-        context_text = "\n\n".join(
-            f"【紀錄 {i+1}】{c}" for i, c in enumerate(context_chunks)
-        )
+        
+        # 根據策略決定是否截斷
+        if strategy == "B":
+            # 策略 B: 智慧截斷，限制每個 chunk 不要過長而撐爆 Token Limit
+            context_text = "\n\n".join(
+                f"【紀錄 {i+1}】{c[:600]}..." if len(c) > 600 else f"【紀錄 {i+1}】{c}" 
+                for i, c in enumerate(context_chunks)
+            )
+        else:
+            # 策略 A: 原汁原味 (預期呼叫端只會傳入 1 筆)
+            context_text = "\n\n".join(
+                f"【紀錄 {i+1}】{c}" for i, c in enumerate(context_chunks)
+            )
+
         messages = [
             SystemMessage(content=_SYSTEM_PROMPT),
             HumanMessage(content=(
@@ -53,7 +58,19 @@ class LLMService:
                 f"使用者的問題：{question}"
             )),
         ]
-        resp = self._llm.invoke(messages)
+        
+        # 動態建立 LLM 實例
+        target_model = "llama-3.3-70b-versatile" if is_paid else LLM_MODEL
+        actual_api_key = api_key if api_key else GROQ_API_KEY
+        
+        llm = ChatGroq(
+            model=target_model,
+            api_key=actual_api_key,
+            temperature=0.3,
+            max_tokens=1024,
+        )
+        
+        resp = llm.invoke(messages)
         return resp.content
 
 llm_service = LLMService()

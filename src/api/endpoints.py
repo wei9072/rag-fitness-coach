@@ -17,15 +17,30 @@ async def chat_endpoint(req: ChatRequest):
 
     try:
         # Step 1: 判定語意路由，取得改寫關鍵字
-        decision = intent_router.route_query(req.question)
+        decision = intent_router.route_query(
+            req.question,
+            api_key=req.api_key,
+            is_paid=req.is_paid
+        )
 
         # Step 2: 依造判斷決定取用哪種檢索邏輯
+        # 實作檢索策略：若為 Strategy A，強制限制所有數量為 1
+        limit_k = 1 if req.strategy == "A" else None
+        
         if decision.intent == "all":
-            relevant_docs = vector_service.get_all_sorted_by_date()
+            # 保護機制：現在資料庫可能多達數千個 Chunk (如 PDF)，
+            # 若意圖為全量統計(all)，為避免撐爆 LLM Context Window (413 錯誤)，
+            # 強制限制最多只取最新 30 筆有日期的核心訓練紀錄
+            n = limit_k if limit_k else 30
+            relevant_docs = vector_service.get_top_n_by_date(n)
         elif decision.intent == "temporal":
-            relevant_docs = vector_service.get_top_n_by_date(decision.n_count)
+            n = limit_k if limit_k else decision.n_count
+            relevant_docs = vector_service.get_top_n_by_date(n)
         else:
-            relevant_docs = vector_service.search_semantic(decision.refined_query)
+            # 語意搜尋時，同樣也設定一個保護上限 (TOP_K 預設5)
+            # 因為 vector_service 預設是吃 TOP_K，這裏我們直接手動切片
+            search_res = vector_service.search_semantic(decision.refined_query)
+            relevant_docs = search_res[:limit_k] if limit_k else search_res
 
         # 沒找到資料，即時返回
         if not relevant_docs:
@@ -36,7 +51,13 @@ async def chat_endpoint(req: ChatRequest):
             )
 
         # Step 3: 交由 LLM 處理生成最後回答
-        final_answer = llm_service.generate_reply(req.question, relevant_docs)
+        final_answer = llm_service.generate_reply(
+            question=req.question, 
+            context_chunks=relevant_docs,
+            api_key=req.api_key,
+            is_paid=req.is_paid,
+            strategy=req.strategy
+        )
 
         # 返回結果
         return ChatResponse(

@@ -4,6 +4,9 @@ from pydantic import BaseModel, Field
 # ── FastAPI 請求與回應 ──────────────────────────────────────
 class ChatRequest(BaseModel):
     question: str
+    api_key: str | None = None
+    is_paid: bool = False
+    strategy: str = "B"
 
 class ChatResponse(BaseModel):
     answer: str
