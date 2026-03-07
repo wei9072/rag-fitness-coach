@@ -4,9 +4,10 @@ app.py — Streamlit 聊天介面，串接 FastAPI 後端。
 
 import streamlit as st
 import requests
+import os
 
 # ── 設定 ─────────────────────────────────────────────────
-API_URL = "http://localhost:8000/api/chat"
+API_URL = os.getenv("FASTAPI_URL", "http://localhost:8000/api/chat")
 
 # ── 頁面配置 ──────────────────────────────────────────────
 st.set_page_config(
