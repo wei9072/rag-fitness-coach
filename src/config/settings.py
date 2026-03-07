@@ -10,8 +10,8 @@ INDEX_DIR = BASE_DIR / "data" / "faiss_index"
 load_dotenv(BASE_DIR / ".env")
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-if not GROQ_API_KEY or GROQ_API_KEY == "your_key_here":
-    raise RuntimeError("請在 .env 中設定有效的 GROQ_API_KEY")
+if GROQ_API_KEY == "your_key_here":
+    GROQ_API_KEY = None
 
 # ── 模型常數 ──────────────────────────────────────────────
 MODEL_NAME = "BAAI/bge-small-zh-v1.5"
