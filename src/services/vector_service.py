@@ -26,10 +26,11 @@ class VectorService:
             
         return cls._instance
 
-    def search_semantic(self, query: str) -> list[str]:
+    def search_semantic(self, query: str, k: int | None = None) -> list[str]:
         """語意向量檢索"""
         # 動態抓取 TOP_K，避免 Singleton 初始化後參數寫死
-        docs = self.vectorstore.similarity_search(query, k=TOP_K)
+        search_k = k if k else TOP_K
+        docs = self.vectorstore.similarity_search(query, k=search_k)
         return [d.page_content for d in docs]
 
     def get_all_sorted_by_date(self) -> list[str]:

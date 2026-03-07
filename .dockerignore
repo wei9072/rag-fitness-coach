@@ -1,0 +1,13 @@
+.git
+.gitignore
+.env
+__pycache__
+*.pyc
+*.pyo
+.DS_Store
+.idea/
+.vscode/
+
+# 放棄包含本機產生的龐大模型快取 (建議由 Docker Image 建置時自行抓取)
+huggingface_models/
+.cache/huggingface/

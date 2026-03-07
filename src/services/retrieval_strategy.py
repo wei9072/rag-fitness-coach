@@ -5,6 +5,18 @@
 from abc import ABC, abstractmethod
 from src.services.vector_service import vector_service
 
+# 單例化 CrossEncoder，避免重複載入佔用記憶體
+_reranker_model = None
+
+def get_reranker():
+    global _reranker_model
+    if _reranker_model is None:
+        from sentence_transformers import CrossEncoder
+        print("⏳ 載入 Re-ranker 模型 (BAAI/bge-reranker-base)...")
+        _reranker_model = CrossEncoder('BAAI/bge-reranker-base', max_length=512)
+    return _reranker_model
+
+
 class BaseRetriever(ABC):
     """
     抽象檢索策略基底類別 (Abstact Strategy)
@@ -16,12 +28,38 @@ class BaseRetriever(ABC):
 class SemanticRetriever(BaseRetriever):
     """
     語意檢索策略 (Concrete Strategy)
-    負責呼叫 FAISS 進行語意識別與向量相似度比對。
+    導入「兩階段檢索 (Two-Stage Retrieval)」架構：
+    - 階段一 (粗搜)：先使用 FAISS 向量比對，擴大召回率抓取前 10 筆相關資料。
+    - 階段二 (精排)：透過 bge-reranker-base CrossEncoder 模型重新對 Query 與 Document 算分排序。
+    最精準的分數優先回傳 (預設回傳 3 筆給 LLM)。
     """
+    def __init__(self):
+        # 確保模型在初次實例化時載入
+        self.reranker = get_reranker()
+
     def retrieve(self, query: str = "", limit_k: int | None = None) -> list[str]:
-        res = vector_service.search_semantic(query)
-        # 由於 vector_service 預設是吃 TOP_K，這裏我們手動切片套用 limit_k (策略 A 保護機制)
-        return res[:limit_k] if limit_k else res
+        # 階段一：粗搜 (Initial Retrieval - 放大範圍取 10 筆)
+        initial_k = 10
+        initial_docs = vector_service.search_semantic(query, k=initial_k)
+        
+        if not initial_docs:
+            return []
+            
+        # 階段二：精排 (Reranking)
+        # 將 query 與擷取出的 10 筆 doc 組成 pairs 讓 CrossEncoder 算分
+        pairs = [[query, doc] for doc in initial_docs]
+        scores = self.reranker.predict(pairs)
+        
+        # 將分數與文章配對，並依據分數由高到低重新排序 (分數愈高代表愈相關)
+        scored_docs = list(zip(scores, initial_docs))
+        scored_docs.sort(key=lambda x: x[0], reverse=True)
+        
+        # 決定最後要回傳的數量 (若未指定，依照使用者需求預設回傳 Top 3)
+        final_k = limit_k if limit_k else 3
+        
+        # 只提取排序後的內文字串回傳
+        final_docs = [doc for score, doc in scored_docs[:final_k]]
+        return final_docs
 
 class TemporalRetriever(BaseRetriever):
     """

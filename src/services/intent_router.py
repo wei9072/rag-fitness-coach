@@ -11,7 +11,11 @@ class IntentRouter:
     """
     def __init__(self):
         self._ROUTER_SYSTEM = (
-            "你是一個健身紀錄檢索路由助手。"
+            "你是一個健身紀錄檢索路由助手。\n"
+            "【步驟 1：判定大分類 (intent_category)】\n"
+            "如果是詢問過去的訓練數據或紀錄，請設為 'QA_INTENT'。\n"
+            "如果是要求安排新菜單、給予未來訓練建議等生成性任務，請設為 'PLANNING_INTENT'。\n\n"
+            "【步驟 2：判定檢索策略 (intent)】\n"
             "分析使用者的問題，決定最適合的檢索策略：\n"
             "1. 'all': 使用者想要統計筆數、總金額、總次數或查看所有歷史紀錄時使用。\n"
             "2. 'temporal': 使用者詢問「最近」、「最新」、「上次」、「前N筆」紀錄時使用。\n"
@@ -19,10 +23,10 @@ class IntentRouter:
             "如果是 'semantic'，請同時提供一個優化後的簡短關鍵詞。"
         )
 
-    def route_query(self, question: str, api_key: str = None, is_paid: bool = False, llm_provider: str = "groq", model_name: str = None) -> tuple[BaseRetriever, str]:
+    def route_query(self, question: str, api_key: str = None, is_paid: bool = False, llm_provider: str = "groq", model_name: str = None) -> tuple[BaseRetriever, str, str]:
         """
         根據客戶問題，決定檢索方式與關鍵字
-        回傳 (Retriever策略物件, 提煉後的搜尋字串)
+        回傳 (Retriever策略物件, 提煉後的搜尋字串, 意圖大類)
         """
         # 模型決定邏輯 (預設使用 .env 或是設定好的預設值)
         # 對於 groq，根據是否付費給定較強的模型，其他 provider 則依 model_name 或內部預設
@@ -50,19 +54,19 @@ class IntentRouter:
                 SystemMessage(content=self._ROUTER_SYSTEM),
                 HumanMessage(content=question),
             ])
-            print(f"  🧠 Intent Router 分析: {decision.intent} | N={decision.n_count} | Query='{decision.refined_query}'")
+            print(f"  🧠 Intent Router 分析: {decision.intent_category} -> {decision.intent} | N={decision.n_count} | Query='{decision.refined_query}'")
             
             # 👇 Factory 邏輯：根據分類返回對應的 Strategy，後續調用方不需理會細節
             if decision.intent == "all":
-                return AllRetriever(), decision.refined_query
+                return AllRetriever(), decision.refined_query, decision.intent_category
             elif decision.intent == "temporal":
-                return TemporalRetriever(decision.n_count), decision.refined_query
+                return TemporalRetriever(decision.n_count), decision.refined_query, decision.intent_category
             else:
-                return SemanticRetriever(), decision.refined_query
+                return SemanticRetriever(), decision.refined_query, decision.intent_category
 
         except Exception as e:
             print(f"  ⚠️ LLM 路由拋出異常，將退回語意搜尋：{e}")
-            return SemanticRetriever(), question
+            return SemanticRetriever(), question, "QA_INTENT"
 
 # 出口單例
 intent_router = IntentRouter()

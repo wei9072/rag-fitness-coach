@@ -22,6 +22,9 @@ class RouteDecision(BaseModel):
     intent: Literal["semantic", "temporal", "all"] = Field(
         ..., description="檢索意圖：'semantic' (語意搜尋), 'temporal' (時間排序), 'all' (全量統計)"
     )
+    intent_category: Literal["QA_INTENT", "PLANNING_INTENT"] = Field(
+        ..., description="意圖大類：查問歷史紀錄時選 'QA_INTENT'，要求規劃未來菜單/安排計畫時選 'PLANNING_INTENT'"
+    )
     n_count: int = Field(
         5, description="如果是 'temporal' 意圖，需要獲取的紀錄筆數"
     )
