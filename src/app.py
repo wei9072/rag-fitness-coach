@@ -7,7 +7,7 @@ import requests
 import os
 
 # ── 設定 ─────────────────────────────────────────────────
-API_URL = os.getenv("FASTAPI_URL", "http://localhost:8000/api/chat")
+API_URL = os.getenv("FASTAPI_URL", "http://127.0.0.1:8000/api/chat")
 
 # ── 頁面配置 ──────────────────────────────────────────────
 st.set_page_config(
