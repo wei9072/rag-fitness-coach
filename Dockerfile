@@ -4,6 +4,9 @@ FROM python:3.11-slim
 # 設定容器工作目錄
 WORKDIR /app
 
+# 強制 Python 立刻輸出 Log，不要放進 Buffer 導致平台收不到健康檢查
+ENV PYTHONUNBUFFERED=1
+
 # 安裝系統層級的編譯工具 (如果 FAISS 需要)
 RUN apt-get update && apt-get install -y \
     build-essential \
@@ -19,6 +22,10 @@ RUN python -c "from sentence_transformers import CrossEncoder; CrossEncoder('BAA
 
 # 複製所有專案原始碼與資料壓縮進映像檔
 COPY . .
+
+# [強烈建議] 建置 Image 期間直接把 42MB 原文書切塊做成 FAISS 向量庫
+# 這樣一來啟動 Container 時就不會因為要算 10 分鐘的數學而觸發 Hugging Face 的 Startup Timeout！
+RUN python -m src.indexer
 
 # 暴露 FastAPI (8000) 與 Streamlit (7860) 開放的連接埠
 EXPOSE 8000 7860
