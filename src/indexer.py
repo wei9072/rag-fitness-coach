@@ -12,16 +12,18 @@ from langchain_core.documents import Document
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_experimental.text_splitter import SemanticChunker
 import time
+import torch
 
 # ── Embedding 模型與切塊器 ─────────────────────────────────
 from src.config.settings import BASE_DIR, INDEX_DIR, MODEL_NAME, LLM_MODEL, GROQ_API_KEY
 
 DATA_DIR  = BASE_DIR / "data"
 
-print("⏳ 載入 SemanticChunker 使用的 Embedding 模型 (GPU)...")
+device = "cuda" if torch.cuda.is_available() else "cpu"
+print(f"⏳ 載入 SemanticChunker 使用的 Embedding 模型 ({device.upper()})...")
 _chunking_embeddings = HuggingFaceEmbeddings(
     model_name=MODEL_NAME,
-    model_kwargs={"device": "cuda"},
+    model_kwargs={"device": device},
     encode_kwargs={"normalize_embeddings": True},
 )
 semantic_chunker = SemanticChunker(

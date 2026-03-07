@@ -6,6 +6,12 @@ import os
 def main():
     print("🚀 啟動 RAG 健身建議系統...")
     
+    index_path = os.path.join("data", "faiss_index", "index.faiss")
+    if not os.path.exists(index_path):
+        print("⚠️ 未偵測到 FAISS 向量庫 (data/faiss_index)，開始自動建立索引...")
+        from src.indexer import build_index
+        build_index()
+    
     # 啟動 FastAPI 後端
     print("啟動 API 伺服器 (FastAPI)...")
     api_process = subprocess.Popen(

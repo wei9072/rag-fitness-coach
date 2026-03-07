@@ -1,5 +1,6 @@
 from langchain_huggingface import HuggingFaceEmbeddings
 from src.config.settings import MODEL_NAME
+import torch
 
 class EmbeddingService:
     """單例模式，確保 bge-small 模型只被載入一次。"""
@@ -7,11 +8,12 @@ class EmbeddingService:
 
     def __new__(cls):
         if cls._instance is None:
-            print("⏳ 載入 Embedding 模型 (GPU)...")
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+            print(f"⏳ 載入 Embedding 模型 ({device.upper()})...")
             cls._instance = super(EmbeddingService, cls).__new__(cls)
             cls._instance.model = HuggingFaceEmbeddings(
                 model_name=MODEL_NAME,
-                model_kwargs={"device": "cuda"},
+                model_kwargs={"device": device},
                 encode_kwargs={"normalize_embeddings": True},
             )
             print("✅ Embedding 模型載入完成")
