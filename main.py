@@ -20,7 +20,7 @@ def main():
     # 啟動 Streamlit 前端
     print("啟動前端介面 (Streamlit)...")
     app_process = subprocess.Popen(
-        [sys.executable, "-m", "streamlit", "run", "src/app.py"],
+        [sys.executable, "-m", "streamlit", "run", "src/app.py", "--server.port", "7860", "--server.address", "0.0.0.0"],
         stdout=sys.stdout,
         stderr=sys.stderr
     )

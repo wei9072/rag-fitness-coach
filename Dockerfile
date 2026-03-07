@@ -20,8 +20,8 @@ RUN python -c "from sentence_transformers import CrossEncoder; CrossEncoder('BAA
 # 複製所有專案原始碼與資料壓縮進映像檔
 COPY . .
 
-# 暴露 FastAPI (8000) 與 Streamlit (8501) 開放的連接埠
-EXPOSE 8000 8501
+# 暴露 FastAPI (8000) 與 Streamlit (7860) 開放的連接埠
+EXPOSE 8000 7860
 
 # 預設啟動腳本 (會同時喚起 FastAPI 與 Streamlit)
 CMD ["python", "main.py"]

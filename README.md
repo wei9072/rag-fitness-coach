@@ -1,3 +1,12 @@
+---
+title: Rag Fitness Coach
+emoji: 🏋️
+colorFrom: blue
+colorTo: green
+sdk: docker
+pinned: false
+app_port: 7860
+---
 # 🏋️ RAG 健身教練系統 (Agentic RAG Fitness Coach)
 
 > 結合本地隱私檢索、Agentic Workflow 與自適應意圖路由的次世代 AI 健身顧問
