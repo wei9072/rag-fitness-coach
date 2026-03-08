@@ -1,6 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from src.api.endpoints import api_router
+import os
 
 def create_app() -> FastAPI:
     """工廠模式建立 FastAPI 實例"""
@@ -16,6 +18,11 @@ def create_app() -> FastAPI:
 
     # 註冊所有的 API Routes
     app.include_router(api_router, prefix="/api")
+
+    # Serve React Frontend
+    static_dir = os.path.join(os.path.dirname(__file__), "..", "static")
+    if os.path.exists(static_dir):
+        app.mount("/", StaticFiles(directory=static_dir, html=True), name="static")
 
     return app
 

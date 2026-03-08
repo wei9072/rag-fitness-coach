@@ -1,0 +1,632 @@
+<!DOCTYPE html>
+<html lang="zh-Hant" class="dark">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FitAI — 智慧健身教練</title>
+    <meta name="description" content="Agentic RAG 架構的 AI 健身顧問，提供兩階段精準檢索與個人化訓練建議。">
+
+    <!-- Inter font -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
+        rel="stylesheet">
+
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] },
+                    colors: {
+                        electric: '#3B82F6',
+                        vibrant: '#10B981',
+                        surface: 'rgba(30, 41, 59, 0.45)',
+                        borderGlass: 'rgba(255, 255, 255, 0.08)'
+                    },
+                }
+            }
+        }
+    </script>
+    <style>
+        @keyframes fluidBg {
+
+            0%,
+            100% {
+                background-position: 0% 50%;
+            }
+
+            50% {
+                background-position: 100% 50%;
+            }
+        }
+
+        body {
+            background: linear-gradient(-45deg, #020617, #0f172a, #064e3b, #1e3a8a, #0f172a);
+            background-size: 400% 400%;
+            animation: fluidBg 25s ease infinite;
+        }
+
+        @keyframes pulse-glow {
+
+            0%,
+            100% {
+                box-shadow: 0 0 12px rgba(34, 197, 94, 0.4);
+            }
+
+            50% {
+                box-shadow: 0 0 28px rgba(34, 197, 94, 0.7);
+            }
+        }
+
+        .pulse-glow {
+            animation: pulse-glow 2.5s ease-in-out infinite;
+        }
+
+        ::-webkit-scrollbar {
+            width: 5px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.08);
+            border-radius: 10px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.15);
+        }
+
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(12px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .animate-fadeInUp {
+            animation: fadeInUp 0.35s ease-out;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        .animate-spin {
+            animation: spin 1s linear infinite;
+        }
+
+        .typing-dot {
+            animation: typingDot 1.4s infinite;
+        }
+
+        .typing-dot:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+
+        .typing-dot:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+
+        @keyframes typingDot {
+
+            0%,
+            60%,
+            100% {
+                opacity: 0.3;
+                transform: translateY(0);
+            }
+
+            30% {
+                opacity: 1;
+                transform: translateY(-4px);
+            }
+        }
+    </style>
+
+    <!-- React 18 -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+
+<body
+    class="h-screen w-screen overflow-hidden text-slate-200 p-3 sm:p-5 md:p-8 flex items-center justify-center antialiased">
+    <div id="root" class="w-full h-full max-w-[1400px]"></div>
+
+    <script type="text/babel">
+        /* ═════════════════════════════════════════════════════
+           Lucide Icon Helper
+           ═════════════════════════════════════════════════════ */
+        const Icon = ({ name, className = '', size = 20 }) => {
+            const ref = React.useRef(null);
+            React.useEffect(() => {
+                if (ref.current && lucide.icons[name]) {
+                    ref.current.innerHTML = lucide.icons[name].toSvg({
+                        width: size, height: size,
+                        class: className
+                    });
+                }
+            }, [name, size, className]);
+            return <span ref={ref} className="inline-flex items-center justify-center shrink-0" />;
+        };
+
+        /* ═════════════════════════════════════════════════════
+           Main App
+           ═════════════════════════════════════════════════════ */
+        const FitAIApp = () => {
+            // ── State ──
+            const [messages, setMessages] = React.useState([
+                {
+                    id: 1, sender: 'ai',
+                    text: '你好！👋 我是你的 FitAI 智慧健身教練。\n\n我可以根據你的身體數據，為你提供：\n• 個人化訓練建議\n• 動作技巧分析\n• 營養與恢復指導\n\n請先在左側填入你的個人檔案，然後開始提問吧！',
+                    time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                }
+            ]);
+            const [input, setInput] = React.useState('');
+            const [isLoading, setIsLoading] = React.useState(false);
+
+            // Settings
+            const [provider, setProvider] = React.useState('groq');
+            const [apiKey, setApiKey] = React.useState('');
+            const [isPaid, setIsPaid] = React.useState(false);
+            const [modelName, setModelName] = React.useState('');
+
+            // User Profile
+            const [userName, setUserName] = React.useState('陳韋成');
+            const [userAge, setUserAge] = React.useState('25');
+            const [userGender, setUserGender] = React.useState('男');
+            const [userHeight, setUserHeight] = React.useState('175');
+            const [userWeight, setUserWeight] = React.useState('70');
+            const [userGoal, setUserGoal] = React.useState('增肌');
+            const [userFrequency, setUserFrequency] = React.useState('一週三次');
+            const [userExperience, setUserExperience] = React.useState('一年');
+
+            // UI
+            const [showProfile, setShowProfile] = React.useState(false);
+            const [showSources, setShowSources] = React.useState({});
+            const messagesEndRef = React.useRef(null);
+            const inputRef = React.useRef(null);
+
+            // ── Scroll ──
+            React.useEffect(() => {
+                messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+            }, [messages]);
+
+            // ── Build Profile String ──
+            const buildProfileStr = () => {
+                const parts = [];
+                if (userName) parts.push(`姓名：${userName}`);
+                if (userAge) parts.push(`年齡：${userAge}`);
+                if (userGender) parts.push(`性別：${userGender}`);
+                if (userHeight) parts.push(`身高：${userHeight}cm`);
+                if (userWeight) parts.push(`體重：${userWeight}kg`);
+                if (userGoal) parts.push(`目標：${userGoal}`);
+                if (userFrequency) parts.push(`訓練頻率：${userFrequency}`);
+                if (userExperience) parts.push(`訓練經驗：${userExperience}`);
+                return parts.join('\n');
+            };
+
+            // ── Send ──
+            const handleSend = async () => {
+                if (!input.trim() || isLoading) return;
+                const userText = input.trim();
+                const now = () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+                setMessages(prev => [...prev, { id: Date.now(), sender: 'user', text: userText, time: now() }]);
+                setInput('');
+                setIsLoading(true);
+
+                try {
+                    const resp = await fetch('/api/chat', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            question: userText,
+                            api_key: apiKey || null,
+                            llm_provider: provider,
+                            model_name: modelName || null,
+                            is_paid: isPaid,
+                            user_profile: buildProfileStr() || null
+                        })
+                    });
+
+                    if (!resp.ok) {
+                        const status = resp.status;
+                        const map = {
+                            401: '🔒 API Key 無效或過期，請在側邊欄重新輸入。',
+                            429: '⏳ 已觸發速率限制，請等待 30 秒後再試，或切換至其他供應商。',
+                            500: '🔧 後端處理異常，請檢查終端機日誌。',
+                            502: '🔧 系統內部異常，請檢查終端機日誌。'
+                        };
+                        let errText = map[status];
+                        if (!errText) {
+                            try { errText = (await resp.json()).detail || `HTTP ${status}`; } catch { errText = `HTTP 錯誤 (${status})`; }
+                        }
+                        throw new Error(errText);
+                    }
+
+                    const data = await resp.json();
+                    setMessages(prev => [...prev, {
+                        id: Date.now() + 1, sender: 'ai',
+                        text: data.answer,
+                        rewrittenQuery: data.rewritten_query || '',
+                        sources: data.sources || [],
+                        time: now()
+                    }]);
+                } catch (err) {
+                    const isNetwork = err.message === 'Failed to fetch';
+                    setMessages(prev => [...prev, {
+                        id: Date.now() + 1, sender: 'ai',
+                        text: isNetwork
+                            ? '⚠️ 連線失敗，後端 API 尚未啟動。\n請確認 `python main.py` 正在運行中。'
+                            : `⚠️ ${err.message}`,
+                        time: now()
+                    }]);
+                } finally {
+                    setIsLoading(false);
+                    setTimeout(() => inputRef.current?.focus(), 100);
+                }
+            };
+
+            const handleKeyDown = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } };
+            const clearChat = () => setMessages([{
+                id: Date.now(), sender: 'ai',
+                text: '對話已清除 ✨ 有任何健身問題，儘管問我！',
+                time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+            }]);
+            const toggleSources = (id) => setShowSources(prev => ({ ...prev, [id]: !prev[id] }));
+
+            /* ═══════════════════════ RENDER ═══════════════════════ */
+            return (
+                <div className="w-full h-full flex gap-0 lg:gap-5 bg-slate-900/30 backdrop-blur-xl border border-white/[0.06] rounded-2xl lg:rounded-3xl shadow-2xl relative overflow-hidden">
+
+                    {/* ── Ambient Glow Orbs ── */}
+                    <div className="absolute top-0 left-1/4 w-[500px] h-[500px] bg-electric/15 rounded-full blur-[120px] pointer-events-none" />
+                    <div className="absolute bottom-0 right-1/4 w-[500px] h-[500px] bg-vibrant/15 rounded-full blur-[120px] pointer-events-none" />
+
+                    {/* ══════════════════════════════════════════════
+                    LEFT SIDEBAR
+                   ══════════════════════════════════════════════ */}
+                    <div className="hidden lg:flex flex-col w-[300px] bg-white/[0.03] border-r border-borderGlass relative z-10 shrink-0">
+
+                        {/* Brand */}
+                        <div className="px-6 pt-6 pb-5 border-b border-borderGlass">
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 bg-gradient-to-br from-electric to-vibrant rounded-xl flex items-center justify-center shadow-[0_0_20px_rgba(59,130,246,0.4)]">
+                                    <Icon name="activity" className="text-white" size={20} />
+                                </div>
+                                <div>
+                                    <h1 className="text-xl font-bold text-white tracking-tight">FitAI</h1>
+                                    <p className="text-[10px] text-slate-500 font-medium tracking-wider">AGENTIC RAG COACH</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Scrollable Settings */}
+                        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
+
+                            {/* Settings Group */}
+                            <div>
+                                <h3 className="text-[10px] font-bold text-slate-500 tracking-[0.15em] mb-3">SETTINGS</h3>
+                                <div className="space-y-3">
+                                    <div>
+                                        <label className="text-[11px] font-medium text-slate-400 mb-1 block">AI PROVIDER</label>
+                                        <div className="relative">
+                                            <select
+                                                value={provider}
+                                                onChange={e => setProvider(e.target.value)}
+                                                className="w-full bg-slate-800/50 border border-borderGlass rounded-xl px-3 py-2.5 text-sm text-slate-200 appearance-none outline-none focus:border-electric/50 focus:ring-1 focus:ring-electric/20 transition-all hover:bg-slate-800/70 cursor-pointer"
+                                            >
+                                                <option value="groq">Groq (極速開源)</option>
+                                                <option value="openai">OpenAI (GPT)</option>
+                                                <option value="ollama">Ollama (離線)</option>
+                                            </select>
+                                            <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
+                                                <Icon name="chevron-down" className="text-slate-500" size={14} />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {provider !== 'ollama' && (
+                                        <div>
+                                            <label className="text-[11px] font-medium text-slate-400 mb-1 block">API KEY</label>
+                                            <div className="relative group">
+                                                <input
+                                                    type="password"
+                                                    value={apiKey}
+                                                    onChange={e => setApiKey(e.target.value)}
+                                                    className="w-full bg-slate-800/50 border border-electric/30 rounded-xl px-3 py-2.5 text-sm outline-none transition-all text-electric/80 tracking-wider font-mono shadow-[0_0_8px_rgba(59,130,246,0.15)] focus:shadow-[0_0_16px_rgba(59,130,246,0.3)] focus:border-electric/50"
+                                                    placeholder="sk-... / gsk_..."
+                                                />
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {provider === 'groq' && (
+                                        <label className="flex items-center gap-2 cursor-pointer group">
+                                            <input type="checkbox" checked={isPaid} onChange={e => setIsPaid(e.target.checked)} className="accent-electric w-3.5 h-3.5 rounded" />
+                                            <span className="text-xs text-slate-400 group-hover:text-slate-300 transition-colors">付費版 Pro Key</span>
+                                        </label>
+                                    )}
+
+                                    <div>
+                                        <label className="text-[11px] font-medium text-slate-400 mb-1 block">MODEL NAME</label>
+                                        <input
+                                            type="text"
+                                            value={modelName}
+                                            onChange={e => setModelName(e.target.value)}
+                                            placeholder="留空 → 使用預設"
+                                            className="w-full bg-slate-800/50 border border-borderGlass rounded-xl px-3 py-2.5 text-sm text-slate-300 outline-none focus:border-electric/40 transition-all placeholder:text-slate-600"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Divider */}
+                            <div className="h-px bg-gradient-to-r from-transparent via-borderGlass to-transparent" />
+
+                            {/* User Profile Section */}
+                            <div>
+                                <button onClick={() => setShowProfile(!showProfile)} className="flex items-center justify-between w-full group mb-3">
+                                    <h3 className="text-[10px] font-bold text-slate-500 tracking-[0.15em]">USER PROFILE</h3>
+                                    <div className="flex items-center gap-1.5">
+                                        <span className="text-[10px] text-slate-600 group-hover:text-slate-400 transition-colors">{showProfile ? '收起' : '編輯'}</span>
+                                        <Icon name={showProfile ? 'chevron-up' : 'pencil'} className="text-slate-600 group-hover:text-slate-400 transition-colors" size={12} />
+                                    </div>
+                                </button>
+
+                                {/* Profile Summary Card */}
+                                <div className="bg-slate-900/40 border border-borderGlass rounded-2xl p-4">
+                                    {/* Avatar + Name Row */}
+                                    <div className="flex items-center gap-3 mb-3">
+                                        <div className="relative">
+                                            <div className="w-11 h-11 rounded-full p-[2px] bg-gradient-to-tr from-electric to-vibrant">
+                                                <div className="w-full h-full rounded-full bg-slate-900 flex items-center justify-center text-base font-bold text-white">
+                                                    {userName ? userName[0] : '?'}
+                                                </div>
+                                            </div>
+                                            <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-vibrant border-[2px] border-slate-900 rounded-full pulse-glow" />
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <h4 className="font-semibold text-white text-sm truncate">{userName || '未設定'}</h4>
+                                            <span className="text-[10px] text-vibrant font-medium">Active Plan · {userGoal || '—'}</span>
+                                        </div>
+                                    </div>
+
+                                    {/* Stats Grid (always visible) */}
+                                    <div className="grid grid-cols-3 gap-2">
+                                        {[
+                                            ['身高', userHeight ? `${userHeight}cm` : '—', 'ruler'],
+                                            ['體重', userWeight ? `${userWeight}kg` : '—', 'weight'],
+                                            ['年齡', userAge || '—', 'calendar'],
+                                        ].map(([label, val, icon]) => (
+                                            <div key={label} className="bg-slate-800/40 rounded-xl p-2.5 text-center border border-borderGlass">
+                                                <div className="flex items-center justify-center mb-1">
+                                                    <Icon name={icon} className="text-slate-500" size={11} />
+                                                </div>
+                                                <div className="text-sm font-semibold text-white leading-tight">{val}</div>
+                                                <div className="text-[9px] text-slate-500 mt-0.5">{label}</div>
+                                            </div>
+                                        ))}
+                                    </div>
+
+                                    {/* Tags Row */}
+                                    <div className="flex flex-wrap gap-1.5 mt-3">
+                                        {[
+                                            [userGender, 'text-blue-400 bg-blue-500/10 border-blue-500/20'],
+                                            [userGoal, 'text-vibrant bg-vibrant/10 border-vibrant/20'],
+                                            [userFrequency, 'text-amber-400 bg-amber-500/10 border-amber-500/20'],
+                                            [userExperience, 'text-purple-400 bg-purple-500/10 border-purple-500/20'],
+                                        ].filter(([v]) => v).map(([val, cls]) => (
+                                            <span key={val} className={`text-[10px] font-medium px-2 py-0.5 rounded-full border ${cls}`}>{val}</span>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {/* Expandable Edit Form */}
+                                {showProfile && (
+                                    <div className="mt-3 space-y-2 animate-fadeInUp">
+                                        {[
+                                            ['姓名', userName, setUserName, 'user', 'text'],
+                                            ['年齡', userAge, setUserAge, 'calendar', 'number'],
+                                            ['性別', userGender, setUserGender, 'users', 'text'],
+                                            ['身高 (cm)', userHeight, setUserHeight, 'ruler', 'number'],
+                                            ['體重 (kg)', userWeight, setUserWeight, 'weight', 'number'],
+                                            ['目標', userGoal, setUserGoal, 'target', 'text'],
+                                            ['訓練頻率', userFrequency, setUserFrequency, 'repeat', 'text'],
+                                            ['訓練經驗', userExperience, setUserExperience, 'award', 'text'],
+                                        ].map(([label, val, setter, icon, type]) => (
+                                            <div key={label} className="bg-slate-800/30 border border-borderGlass rounded-xl p-2.5 flex items-center gap-2.5 group hover:border-electric/20 transition-all">
+                                                <div className="w-7 h-7 rounded-lg bg-slate-700/40 flex items-center justify-center shrink-0">
+                                                    <Icon name={icon} className="text-slate-500 group-hover:text-electric/70 transition-colors" size={13} />
+                                                </div>
+                                                <div className="flex-1 min-w-0">
+                                                    <label className="text-[9px] text-slate-500 font-medium block leading-tight">{label}</label>
+                                                    <input
+                                                        type={type}
+                                                        value={val}
+                                                        onChange={e => setter(e.target.value)}
+                                                        className="w-full bg-transparent text-xs text-slate-200 outline-none mt-0.5 placeholder:text-slate-700"
+                                                        placeholder={`輸入${label}`}
+                                                    />
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Bottom Nav */}
+                        <div className="px-4 py-4 border-t border-borderGlass space-y-1">
+                            <button onClick={clearChat} className="w-full flex items-center gap-3 px-3 py-2 text-sm text-red-400/80 hover:text-red-400 hover:bg-red-500/5 rounded-lg transition-all group">
+                                <Icon name="trash-2" className="text-red-500/50 group-hover:text-red-400 transition-colors" size={16} />
+                                清除對話
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* ══════════════════════════════════════════════
+                    RIGHT CHAT AREA
+                   ══════════════════════════════════════════════ */}
+                    <div className="flex-1 flex flex-col relative z-10 overflow-hidden">
+
+                        {/* Header */}
+                        <div className="h-14 flex items-center px-5 border-b border-borderGlass bg-slate-900/30 backdrop-blur-md shrink-0">
+                            <div className="flex items-center gap-2.5">
+                                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-electric/20 to-vibrant/20 border border-borderGlass flex items-center justify-center">
+                                    <Icon name="bot" className="text-vibrant" size={15} />
+                                </div>
+                                <div>
+                                    <h2 className="font-semibold text-white text-sm leading-tight">FitAI Coach</h2>
+                                    <p className="text-[10px] text-slate-500 leading-tight">Two-Stage Re-ranker · Self-Reflection · Intent Routing</p>
+                                </div>
+                            </div>
+                            <div className="ml-auto flex items-center gap-2">
+                                <div className="flex items-center gap-1.5 bg-vibrant/10 border border-vibrant/20 rounded-full px-2.5 py-1">
+                                    <div className="w-1.5 h-1.5 bg-vibrant rounded-full pulse-glow" />
+                                    <span className="text-[10px] text-vibrant font-medium">Online</span>
+                                </div>
+                                {/* Mobile menu (shows on small screens) */}
+                                <button className="lg:hidden w-8 h-8 rounded-full bg-white/5 border border-borderGlass flex items-center justify-center hover:bg-white/10 transition-all">
+                                    <Icon name="settings" className="text-slate-400" size={15} />
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Messages */}
+                        <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-5 space-y-4">
+                            {messages.map(msg => (
+                                <div key={msg.id} className={`flex gap-3 animate-fadeInUp ${msg.sender === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
+                                    {/* Avatar */}
+                                    <div className="shrink-0 mt-auto mb-5">
+                                        {msg.sender === 'ai' ? (
+                                            <div className="w-7 h-7 rounded-full bg-gradient-to-br from-slate-800 to-vibrant/30 border border-borderGlass flex items-center justify-center">
+                                                <Icon name="bot" className="text-vibrant/80" size={13} />
+                                            </div>
+                                        ) : (
+                                            <div className="w-7 h-7 rounded-full bg-gradient-to-br from-electric to-blue-700 border border-borderGlass flex items-center justify-center text-[11px] font-bold text-white">
+                                                {userName ? userName[0] : 'U'}
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* Bubble */}
+                                    <div className={`flex flex-col ${msg.sender === 'user' ? 'items-end' : 'items-start'} max-w-[85%] sm:max-w-[75%]`}>
+                                        <div className={`px-4 py-3 rounded-2xl backdrop-blur-md border shadow-lg text-sm leading-relaxed whitespace-pre-wrap ${msg.sender === 'user'
+                                            ? 'bg-gradient-to-br from-electric/80 to-blue-600/70 text-white border-electric/20 rounded-br-md'
+                                            : 'bg-gradient-to-br from-slate-800/70 to-vibrant/[0.08] text-slate-100 border-white/[0.06] rounded-bl-md'
+                                            }`}>
+                                            {msg.text}
+                                        </div>
+
+                                        {/* Metadata row */}
+                                        <div className={`flex items-center gap-2 mt-1.5 mx-1 ${msg.sender === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
+                                            <span className="text-[10px] text-slate-600 font-medium">{msg.time}</span>
+                                            {msg.rewrittenQuery && (
+                                                <span className="text-[10px] text-electric/60 font-mono">🔄 {msg.rewrittenQuery}</span>
+                                            )}
+                                            {msg.sources?.length > 0 && (
+                                                <button onClick={() => toggleSources(msg.id)} className="text-[10px] text-vibrant/60 hover:text-vibrant transition-colors flex items-center gap-0.5">
+                                                    <Icon name="file-text" size={10} className="text-vibrant/50" />
+                                                    {msg.sources.length} 參考
+                                                </button>
+                                            )}
+                                        </div>
+
+                                        {/* Sources Expansion */}
+                                        {showSources[msg.id] && msg.sources?.length > 0 && (
+                                            <div className="mt-2 w-full bg-slate-900/50 border border-borderGlass rounded-xl p-3 space-y-2 animate-fadeInUp">
+                                                <p className="text-[10px] text-slate-500 font-semibold tracking-wider">📋 SOURCES</p>
+                                                {msg.sources.map((src, i) => (
+                                                    <p key={i} className="text-[11px] text-slate-400 leading-relaxed pl-2 border-l-2 border-vibrant/20">{src}</p>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            ))}
+
+                            {/* Typing Indicator */}
+                            {isLoading && (
+                                <div className="flex gap-3 animate-fadeInUp">
+                                    <div className="w-7 h-7 rounded-full bg-gradient-to-br from-slate-800 to-vibrant/30 border border-borderGlass flex items-center justify-center shrink-0">
+                                        <Icon name="bot" className="text-vibrant/80" size={13} />
+                                    </div>
+                                    <div className="px-5 py-4 rounded-2xl bg-slate-800/50 border border-borderGlass rounded-bl-md">
+                                        <div className="flex gap-1.5">
+                                            <div className="w-2 h-2 bg-vibrant/60 rounded-full typing-dot" />
+                                            <div className="w-2 h-2 bg-vibrant/60 rounded-full typing-dot" />
+                                            <div className="w-2 h-2 bg-vibrant/60 rounded-full typing-dot" />
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            <div ref={messagesEndRef} />
+                        </div>
+
+                        {/* ── Input Area (Pill-shaped) ── */}
+                        <div className="px-4 sm:px-5 pb-4 pt-2 shrink-0">
+                            <div className="relative flex items-center gap-1.5 bg-slate-800/50 backdrop-blur-xl border border-white/[0.06] rounded-full p-1.5 pr-1.5 shadow-xl transition-all focus-within:border-electric/30 focus-within:shadow-[0_0_20px_rgba(59,130,246,0.08)]">
+                                <input
+                                    ref={inputRef}
+                                    type="text"
+                                    value={input}
+                                    onChange={e => setInput(e.target.value)}
+                                    onKeyDown={handleKeyDown}
+                                    placeholder={isLoading ? '🧠 AI 分析中...' : '輸入你的健身問題...'}
+                                    disabled={isLoading}
+                                    className="flex-1 bg-transparent border-none outline-none text-sm text-slate-200 placeholder:text-slate-600 px-4 disabled:opacity-40"
+                                />
+
+                                <button className="p-2 text-slate-500 hover:text-white hover:bg-white/5 rounded-full transition-all hover:scale-105" title="語音輸入">
+                                    <Icon name="mic" size={16} />
+                                </button>
+                                <button className="p-2 text-slate-500 hover:text-white hover:bg-white/5 rounded-full transition-all hover:scale-105" title="附件">
+                                    <Icon name="paperclip" size={16} />
+                                </button>
+
+                                <button
+                                    onClick={handleSend}
+                                    disabled={isLoading || !input.trim()}
+                                    className="ml-0.5 bg-electric hover:bg-blue-500 disabled:bg-slate-700 disabled:text-slate-500 text-white font-mono text-[10px] font-bold tracking-widest px-4 py-2.5 rounded-full hover:scale-105 disabled:hover:scale-100 transition-all shadow-[0_4px_14px_rgba(59,130,246,0.3)] disabled:shadow-none flex items-center gap-1.5 uppercase"
+                                    title="Send"
+                                >
+                                    {isLoading ? (
+                                        <Icon name="loader-2" className="animate-spin" size={14} />
+                                    ) : (
+                                        <>
+                                            <Icon name="send" size={12} />
+                                            <span className="hidden sm:inline">3B82F6</span>
+                                        </>
+                                    )}
+                                </button>
+                            </div>
+                            <p className="text-center text-[10px] text-slate-700 mt-2">Powered by Agentic RAG · FAISS · CrossEncoder Re-ranker</p>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        ReactDOM.createRoot(document.getElementById('root')).render(<FitAIApp />);
+    </script>
+</body>
+
+</html>

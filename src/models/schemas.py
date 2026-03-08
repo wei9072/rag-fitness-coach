@@ -8,7 +8,6 @@ class ChatRequest(BaseModel):
     llm_provider: str = "groq"
     model_name: str | None = None
     is_paid: bool = False
-    strategy: str = "B"
     user_profile: str | None = None
 
 class ChatResponse(BaseModel):

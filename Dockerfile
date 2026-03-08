@@ -27,8 +27,8 @@ COPY . .
 # 這樣一來啟動 Container 時就不會因為要算 10 分鐘的數學而觸發 Hugging Face 的 Startup Timeout！
 RUN python -m src.indexer
 
-# 暴露 FastAPI (8000) 與 Streamlit (7860) 開放的連接埠
-EXPOSE 8000 7860
+# 暴露 FastAPI 連接埠（同時 Serve React SPA 前端）
+EXPOSE 7860
 
-# 預設啟動腳本 (會同時喚起 FastAPI 與 Streamlit)
+# 預設啟動腳本
 CMD ["python", "main.py"]

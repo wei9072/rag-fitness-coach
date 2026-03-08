@@ -25,8 +25,6 @@ async def chat_endpoint(req: ChatRequest):
         )
 
         # Step 2 & 3: 交由 Agentic Workflow 執行「檢索 -> 評估 -> (如果 NO 則改寫重搜) -> 生成」的閉環
-        limit_k = 1 if req.strategy == "A" else None
-        
         final_answer, relevant_docs = agent_workflow.run_agentic_rag(
             strategy=strategy,
             original_query=req.question,
@@ -35,9 +33,7 @@ async def chat_endpoint(req: ChatRequest):
             is_paid=req.is_paid,
             llm_provider=req.llm_provider,
             model_name=req.model_name,
-            limit_k=limit_k,
             user_profile=req.user_profile,
-            retrieval_strategy_name=req.strategy,
             intent_category=intent_category
         )
 

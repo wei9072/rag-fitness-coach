@@ -32,7 +32,8 @@ app_port: 7860
 | **嵌入與重排序** | BAAI/bge-small-zh-v1.5 (Embedding), BAAI/bge-reranker-base (CrossEncoder) |
 | **向量資料庫** | [FAISS](https://github.com/facebookresearch/faiss) (CPU) |
 | **雲端 / 本地 LLM** | Groq, OpenAI, Ollama |
-| **後端與 UI 服務** | FastAPI + Streamlit |
+| **後端 API** | [FastAPI](https://fastapi.tiangolo.com/) (含 StaticFiles 靜態部署) |
+| **前端介面** | React 18 + Tailwind CSS (Glassmorphism SPA) |
 
 ## 📁 專案結構
 
@@ -43,15 +44,17 @@ rag-fitness-coach/
 │   ├── *.pdf                # 你的參考書籍與教練手冊（PDF 格式）
 │   └── faiss_index/         # FAISS 索引（由 indexer 產出）
 ├── src/
-│   ├── api/                 # FastAPI 伺服器端點 (endpoints, server)
+│   ├── api/                 # FastAPI 伺服器與路由 (endpoints, server)
 │   ├── config/              # 環境變數與全域設定 (settings)
 │   ├── models/              # Pydantic 資料綱要 (schemas)
 │   ├── services/            # 核心 Agentic RAG 商業邏輯 (workflow, router, llm, factory...)
-│   ├── indexer.py           # 向量化與建立 FAISS 索引的 ETL 腳本
-│   └── app.py               # Streamlit 聊天介面
+│   ├── static/
+│   │   └── index.html       # React + Tailwind CSS Glassmorphism 前端 SPA
+│   └── indexer.py           # 向量化與建立 FAISS 索引的 ETL 腳本
 ├── tests/
 │   └── evaluate_rag.py      # LLM-as-a-Judge 自動量化評估腳本
-├── main.py                  # 啟動 FastAPI 與 Streamlit 的主程式
+├── main.py                  # 啟動 FastAPI 伺服器 (同時 Serve 前端 + API)
+├── Dockerfile               # 生產環境容器化部署
 ├── .env.example             # 環境變數範本
 ├── requirements.txt
 └── README.md
@@ -92,13 +95,15 @@ python -m src.indexer
 
 ### 5. 啟動服務
 
-我們提供了一個主要入口 `main.py`，可以直接同時啟動 FastAPI 後端與 Streamlit 前端：
+一個指令同時啟動 FastAPI 後端 API 與 React Glassmorphism 前端：
 
 ```bash
 python main.py
 ```
 
-打開瀏覽器前往 `http://localhost:8501` 即可使用。
+打開瀏覽器前往 **`http://localhost:7860`** 即可使用。
+
+> 前端介面由 FastAPI `StaticFiles` 直接提供服務，無需額外啟動前端伺服器。
 
 ## 💬 使用範例
 
@@ -138,7 +143,7 @@ graph TD
 
 ## 🌟 開發史：從 MVP 到企業級架構演進
 
-本專案實現了從「簡易 MVP 腳本」跨入「企業級架構」的七大重構里程碑：
+本專案實現了從「簡易 MVP 腳本」跨入「企業級架構」的八大重構里程碑：
 
 1. **模組化重構 (Modular Architecture)**
    - 將原本肥大的單一檔案拆分為標準 `src/` 領域驅動架構 (`api`, `services`, `models`, `config`)。
@@ -149,10 +154,10 @@ graph TD
 3. **GPU 解析與防爆機制 (GPU Semantic Chanking & Payload Limits)**
    - 擴充 `pypdf` 支援，成功匯入數千頁厚重的原文生物力學與教練手冊。
    - 捨棄固定字數切割，升級為 **LangChain SemanticChunker**，並結合本機 **NVIDIA GTX 1050 Ti (CUDA 11.8)** 達成極速語意識別與 FAISS 向量建置。
-   - 因應免費 API 嚴苛的限制，開發了 Streamlit 設定面板，實作「策略 A (極限省流)」與「策略 B (智慧截斷)」徹底解決 Payload 崩潰問題。
+   - 因應免費 API 嚴苛的限制，實作文字截斷管線徹底解決 Payload 崩潰問題。
 4. **多模型切換工廠 (LLM Factory)**
    - 貫徹 SOLID 依賴反轉原則 (DIP)，將 ChatModel 初始化從核心服務中剝離。
-   - 實作工廠模式，支援從 Streamlit 介面一鍵切換 Groq (Llama-3), OpenAI (GPT-4o) 以及 Ollama 本地離線模型。
+   - 實作工廠模式，支援從前端介面一鍵切換 Groq (Llama-3), OpenAI (GPT-4o) 以及 Ollama 本地離線模型。
 5. **兩階段檢索 (Two-Stage Retrieval)**
    - 導入 `sentence_transformers` 的 `CrossEncoder` (`BAAI/bge-reranker-base`)。
    - 第一階段 FAISS 擴大召回率抓取 10 筆，第二階段 CrossEncoder 進行深度語意打分重排，精準截取 Top 3 給 LLM，大幅提升抗雜訊能力。
@@ -162,12 +167,17 @@ graph TD
 7. **意圖分類與 LLM-as-a-Judge 自動量化評估**
    - 將意圖嚴格區分為 `QA_INTENT` 與 `PLANNING_INTENT`，動態切換嚴格/擴展提示詞，解決生成型任務因 RAG 限制造成的矛盾。
    - 導入 `tests/evaluate_rag.py`，利用強大模型作為裁判，針對 Context Precision, Faithfulness 與 Answer Relevance 進行自動化 0~1 的嚴格打分，為未來的實驗提供客觀量化指標。
+8. **前端架構遷移 (Streamlit → React SPA + Glassmorphism)**
+   - 捨棄 Streamlit 的 iFrame 限制，全面遷移至 **React 18 + Tailwind CSS** 的純靜態 SPA。
+   - 設計語言採用極致 **Glassmorphism (玻璃擬態)** 風格：流體動態漸層背景、`backdrop-blur-xl` 毛玻璃容器、環境光球散射。
+   - 前端由 FastAPI `StaticFiles` 直接提供服務，API 呼叫走同源 `/api/chat`，無需跨域設定。
+   - 介面包含：漸層對話氣泡、User Profile 數據卡片、Sources 參考文獻展開、三點打字動畫、友善錯誤提示。
 
 ## ⚙️ 自訂設定 / 預防 API Rate Limits
 
 由於我們使用了 Groq 免費方案，有極為嚴格的 TPM (Tokens Per Minute) 和 TPD (Tokens Per Day) 上限：
-- **若使用免費金鑰 (`llama-3.1-8b-instant`)**：因為有嚴格的 Token 上限，您才需要考慮在 Streamlit 左側邊欄選擇 **策略 A (極限省流)** 或是 **策略 B (智慧截斷)**，確保不會觸發 `413 Request Too Large` 錯誤。
-- **若使用付費版金鑰 (`llama-3.3-70b-versatile`)**：請勾選「💎 這是付費版 API Key」。**付費版完全不受此限制，因此您完全不需要管 A 或是 B 的策略選擇**。系統會自動解放所有上下文限制，享受完整無閹割的高智商 Agentic RAG 分析。
+- **若使用免費金鑰 (`llama-3.1-8b-instant`)**：系統會自動截斷過長的檢索文字，確保不會觸發 `413 Request Too Large` 錯誤。
+- **若使用付費版金鑰 (`llama-3.3-70b-versatile`)**：請在左側設定面板勾選「💎 付費版 Pro Key」。系統會自動解放所有上下文限制，享受完整無閹割的高智商 Agentic RAG 分析。
 
 ## 📝 License
 

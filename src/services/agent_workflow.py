@@ -49,9 +49,7 @@ class AgenticWorkflow:
         is_paid: bool = False,
         llm_provider: str = "groq",
         model_name: str | None = None,
-        limit_k: int | None = None,
         user_profile: str | None = None,
-        retrieval_strategy_name: str = "B",
         intent_category: str = "QA_INTENT"
     ) -> tuple[str, list[str]]:
         """
@@ -89,7 +87,7 @@ class AgenticWorkflow:
             print(f"\n🔄 [Agent Loop] 迭代 {retries}: 使用關鍵字 '{current_query}' 進行檢索...")
             
             # 步驟 A：檢索資料
-            docs = strategy.retrieve(query=current_query, limit_k=limit_k)
+            docs = strategy.retrieve(query=current_query)
             all_retrieved_docs.extend(docs) # 紀錄歷程
             
             if not docs and intent_category != "PLANNING_INTENT":
@@ -120,10 +118,9 @@ class AgenticWorkflow:
                 print("✅ [Agent Loop] 資料相關！結束檢索迴圈，進入生成階段...")
                 final_answer = llm_service.generate_reply(
                     question=original_query,
-                    context_chunks=docs, # 用當前這批確認相關的 docs
+                    context_chunks=docs,
                     api_key=api_key,
                     is_paid=is_paid,
-                    strategy=retrieval_strategy_name,
                     user_profile=user_profile,
                     llm_provider=llm_provider,
                     model_name=model_name,

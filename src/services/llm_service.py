@@ -24,7 +24,7 @@ class LLMService:
     """專責處理主線對話與 RAG Prompt 組裝"""
 
 
-    def generate_reply(self, question: str, context_chunks: list[str], api_key: str = None, is_paid: bool = False, strategy: str = "B", user_profile: str = None, llm_provider: str = "groq", model_name: str = None, intent_category: str = "QA_INTENT") -> str:
+    def generate_reply(self, question: str, context_chunks: list[str], api_key: str = None, is_paid: bool = False, user_profile: str = None, llm_provider: str = "groq", model_name: str = None, intent_category: str = "QA_INTENT") -> str:
         """
         接收檢索結果與問題，交給 LLM 判讀並生成回文字串。
         實踐 FP (函數式編程)：純函數與 Map 清洗管線
@@ -32,7 +32,7 @@ class LLMService:
         
         # 定義 Pure Functions 進行資料管線處理 (無副作用)
         def truncate_if_needed(text: str) -> str:
-            return f"{text[:600]}..." if strategy == "B" and len(text) > 600 else text
+            return f"{text[:600]}..." if len(text) > 600 else text
             
         def format_record(index: int, text: str) -> str:
             return f"【紀錄 {index+1}】{text}"
