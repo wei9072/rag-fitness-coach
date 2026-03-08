@@ -13,3 +13,4 @@ langchain-huggingface
 pypdf
 langchain-experimental
 langchain-openai
+cryptography>=41.0.0
