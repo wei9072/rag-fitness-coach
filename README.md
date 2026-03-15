@@ -1,4 +1,4 @@
-<![CDATA[<div align="center">
+<div align="center">
 
 # 🏋️ FitAI — Agentic RAG 智慧健身教練
 
@@ -328,4 +328,3 @@ graph LR
 
 MIT
 
-]]>
