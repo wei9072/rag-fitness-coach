@@ -1,10 +1,28 @@
-from typing import Literal
+from typing import Literal, Optional
 from pydantic import BaseModel, Field
 
-# ── FastAPI 請求與回應 ──────────────────────────────────────
+# ── Auth 請求與回應 ──────────────────────────────────────────
+class RegisterRequest(BaseModel):
+    username: str
+    password: str
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    user_id: str
+    username: str
+
+class UserInfo(BaseModel):
+    user_id: str
+    username: str
+
+# ── FastAPI Chat 請求與回應 ──────────────────────────────────
 class ChatRequest(BaseModel):
     question: str
-    user_id: str = "default_user"
     session_id: str | None = None  # 用於追蹤對話上下文 (Memory)
     api_key: str | None = None
     llm_provider: str = "groq"

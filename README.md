@@ -1,184 +1,331 @@
+<![CDATA[<div align="center">
+
+# 🏋️ FitAI — Agentic RAG 智慧健身教練
+
+**本地隱私 × 雲端推論 × 多租戶隔離 × 前後端分離**
+
+[![Python 3.10+](https://img.shields.io/badge/Python-3.10+-3776AB?logo=python&logoColor=white)](https://python.org)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.110+-009688?logo=fastapi)](https://fastapi.tiangolo.com)
+[![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=white)](https://react.dev)
+[![LangChain](https://img.shields.io/badge/LangChain-🦜-green)](https://python.langchain.com)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
+</div>
+
 ---
-title: Rag Fitness Coach
-emoji: 🏋️
-colorFrom: blue
-colorTo: green
-sdk: docker
-pinned: false
-app_port: 7860
+
+## 🎯 Part 1 — 產品經理：這是什麼？解決了什麼問題？
+
+### 問題
+
+市面上的 AI 健身助手，不是把你的私人訓練紀錄傳上雲端（隱私風險），就是只能做通用型問答，根本不認識「你」。使用者需要的是一位 **記得你上個月深蹲多重、知道你的弱項、能幫你規劃下一週菜單** 的 AI 教練。
+
+### 解法
+
+FitAI 是一套以 **RAG (Retrieval-Augmented Generation)** 為核心的 AI 健身顧問系統。它把你的私人訓練紀錄向量化後存在 **本地端**，再透過雲端大型語言模型進行推論，實現 **「資料不出門、智慧從雲來」** 的混合雲架構。
+
+### 核心價值
+
+| 價值 | 說明 |
+|------|------|
+| 🔒 **隱私優先** | 文檔解析、向量搜尋 100% 在本機跑，你的訓練紀錄不會被第三方看到 |
+| 🧠 **記得你是誰** | 導入 SQLite 長期記憶，AI 教練知道你上週聊過什麼、上月深蹲多重 |
+| 🏠 **多租戶隔離** | User A 的數據絕對不會被 User B 看見 (Qdrant Metadata Filter) |
+| 🎯 **意圖感知** | 不只是 Q&A 機器人——問數據就查數據，要菜單就幫你規劃 |
+| 🔌 **前後端解耦** | 後端 FastAPI 純 API、前端 React SPA，未來可直接對接手機 App |
+
+### 使用情境
+
+| 你問 | AI 認知到的意圖 | 系統行為 |
+|------|----------------|---------|
+| 我上週深蹲做多重？ | `QA_INTENT` → 時間檢索 | 從向量庫撈出最近紀錄，嚴格分析後回覆 |
+| 我的胸推有進步嗎？ | `QA_INTENT` → 語意搜尋 | 兩階段檢索 + CrossEncoder 重排，追蹤趨勢 |
+| 幫我安排下半身訓練菜單 | `PLANNING_INTENT` | 切換教練 Prompt，結合你的近期實力生成個人化菜單 |
+| 那硬舉呢？ | 上下文延續 | 讀取對話記憶，理解省略的代名詞後再次檢索 |
+
 ---
-# 🏋️ RAG 健身教練系統 (Agentic RAG Fitness Coach)
 
-> 結合本地隱私檢索、Agentic Workflow 與自適應意圖路由的次世代 AI 健身顧問
+## 🏗️ Part 2 — 技術架構師：怎麼做到的？
 
-本專案從一個基礎的 RAG (Retrieval-Augmented Generation) 專案，逐步迭代為具備**「意圖分類 (Intent Classification)」**、**「兩階段檢索 (Two-Stage Retrieval)」**與**「自我反思重搜 (Self-Reflection & Query Rewrite)」**的企業級 Agentic RAG 架構。將使用者的私密健身訓練紀錄向量化後存於本地 FAISS 索引，不僅能精準回覆過去的訓練表現，還能化身專業教練為您量身打造未來課表。
+### 系統架構總覽
 
-## ✨ 特色功能
-
-- 🔒 **隱私優先**：文檔解析、切塊與 FAISS 向量搜尋 100% 在本地運行，支援本機 GPU (CUDA) 加速，完美保護個人資料。
-- 🧭 **大模型意圖路由 (Intent-Based Semantic Routing)**：捨棄傳統的正則表達式。透過 LLM 結構化輸出分析使用者意圖，動態切換 `QA_INTENT` (嚴謹的歷史數據查詢) 與 `PLANNING_INTENT` (生成未來的訓練菜單) 兩大模式。
-- 🎯 **兩階段檢索 (Two-Stage Retrieval)**：
-  - **初階召回**：透過 FAISS 放大召回率抓出 Top 10 候選資料。
-  - **CrossEncoder 重排序**：導入 `bge-reranker-base` 進行深度語意打分，精準截取關聯度最高的 Top 3 餵給生成 LLM，徹底抑制雜訊。
-- 🔄 **Agentic Workflow (代理工作流)**：導入嚴密的「Self-Reflection (自我反思)」檢測。若檢索結果被判定與問題無關，將自動觸發「Query Rewrite (查詢改寫)」機制，更換關鍵字並重新檢索，大幅降低模型產生幻覺 (Hallucination) 的機率。
-- 🧪 **LLM-as-a-Judge 自動量化評估**：內建自動化測試腳本，針對 Context Precision (精準度), Faithfulness (忠誠度) 與 Answer Relevance (相關度) 進行嚴格的客觀打分驗證。
-- 🧱 **SOLID 多模型切換工廠 (LLM Factory)**：落實依賴反轉原則。可無縫從介面一鍵切換 Groq (Llama-3), OpenAI (GPT-4o) 以及 Ollama (本地開源模型)。
-
-## 🛠️ 技術堆疊
-
-| 領域 | 使用技術 / 套件 |
-|------|-------------------|
-| **核心框架** | [LangChain](https://python.langchain.com/) |
-| **嵌入與重排序** | BAAI/bge-small-zh-v1.5 (Embedding), BAAI/bge-reranker-base (CrossEncoder) |
-| **向量資料庫** | [FAISS](https://github.com/facebookresearch/faiss) (CPU) |
-| **雲端 / 本地 LLM** | Groq, OpenAI, Ollama |
-| **後端 API** | [FastAPI](https://fastapi.tiangolo.com/) (含 StaticFiles 靜態部署) |
-| **前端介面** | React 18 + Tailwind CSS (Glassmorphism SPA) |
-
-## 📁 專案結構
-
-```
-rag-fitness-coach/
-├── data/
-│   ├── Train.txt            # 你的健身紀錄（文字格式）
-│   ├── *.pdf                # 你的參考書籍與教練手冊（PDF 格式）
-│   └── faiss_index/         # FAISS 索引（由 indexer 產出）
-├── src/
-│   ├── api/                 # FastAPI 伺服器與路由 (endpoints, server)
-│   ├── config/              # 環境變數與全域設定 (settings)
-│   ├── models/              # Pydantic 資料綱要 (schemas)
-│   ├── services/            # 核心 Agentic RAG 商業邏輯 (workflow, router, llm, factory...)
-│   ├── static/
-│   │   └── index.html       # React + Tailwind CSS Glassmorphism 前端 SPA
-│   └── indexer.py           # 向量化與建立 FAISS 索引的 ETL 腳本
-├── tests/
-│   └── evaluate_rag.py      # LLM-as-a-Judge 自動量化評估腳本
-├── main.py                  # 啟動 FastAPI 伺服器 (同時 Serve 前端 + API)
-├── Dockerfile               # 生產環境容器化部署
-├── .env.example             # 環境變數範本
-├── requirements.txt
-└── README.md
+```mermaid
+graph TB
+    subgraph "Frontend — React + Vite (:5173)"
+        F1["LoginPage"]
+        F2["ChatPage"]
+        F3["AuthContext (JWT)"]
+        F4["api/client.js"]
+    end
+    
+    subgraph "Backend — FastAPI (:8000)"
+        direction TB
+        B_AUTH["Auth Router<br/>register / login / me"]
+        B_CHAT["Chat Endpoint<br/>(Optional Auth)"]
+        B_ROUTER["Intent Router<br/>LLM Semantic Routing"]
+        B_AGENT["Agentic Workflow<br/>Self-Reflection Loop"]
+        B_RET["Retrieval Strategy<br/>Semantic / Temporal / All"]
+        B_RERANK["CrossEncoder Reranker"]
+        B_LLM["LLM Service<br/>Groq / OpenAI / Ollama"]
+        B_MEM["Memory Manager<br/>Sliding Window Context"]
+    end
+    
+    subgraph "Data Layer"
+        D1["SQLite<br/>users, sessions, chat_history"]
+        D2["Qdrant<br/>vector embeddings<br/>(user_id metadata filter)"]
+    end
+    
+    F1 -->|"HTTP"| B_AUTH
+    F2 -->|"Bearer JWT"| B_CHAT
+    B_CHAT --> B_ROUTER --> B_RET --> B_RERANK --> B_AGENT --> B_LLM
+    B_CHAT --> B_MEM --> D1
+    B_RET --> D2
+    B_AUTH --> D1
 ```
 
-## 🚀 快速開始
+### 技術堆疊
 
-### 1. 安裝依賴
+| 層級 | 技術選型 | 為什麼 |
+|------|---------|--------|
+| **前端** | React 19 + Vite + React Router | SPA 架構，熱重載開發，未來可遷移至 React Native |
+| **後端 API** | FastAPI + Pydantic | 非同步高效能，自動產出 OpenAPI 文件 |
+| **認證** | JWT (python-jose) + SHA-256 | 無狀態 Token Auth，前端 localStorage 持久化 |
+| **向量庫** | Qdrant (Local Storage) | 比 FAISS 更強大的 Metadata Filter 實現多租戶隔離 |
+| **關聯式 DB** | SQLite | 零設定輕量化，記憶/會話/使用者資料持久化 |
+| **Embedding** | BAAI/bge-small-zh-v1.5 (CUDA) | 中文語意最佳化，本機 GPU 加速 |
+| **Reranker** | BAAI/bge-reranker-base | CrossEncoder 二次深度打分，抑制雜訊 |
+| **LLM** | Groq / OpenAI / Ollama (Factory) | SOLID DIP 工廠模式，一鍵切換 |
+| **核心框架** | LangChain | 編排 Structured Output、Prompt Template |
 
-```bash
-pip install -r requirements.txt
-```
-
-### 2. 設定環境變數
-
-```bash
-cp .env.example .env
-# 編輯 .env，填入你的 Groq API Key
-```
-
-> 前往 [Groq Console](https://console.groq.com/) 免費取得 API Key
-
-### 3. 準備你的訓練紀錄
-
-將你的健身紀錄或參考書籍放入 `data/` 資料夾，目前支援：
-- **純文字 (.txt, .json)**：例如傳統用 Line 紀錄的訓練日誌。
-- **文件檔案 (.pdf)**：自動使用 PyPDF 提取並拆解內容。
-
-放入資料夾後，系統會自動幫你執行 Token 向量化。
-
-### 4. 建立索引
-
-請使用 module 模式執行，以確保 Python 能夠抓到模組路徑：
-
-```bash
-python -m src.indexer
-```
-
-### 5. 啟動服務
-
-一個指令同時啟動 FastAPI 後端 API 與 React Glassmorphism 前端：
-
-```bash
-python main.py
-```
-
-打開瀏覽器前往 **`http://localhost:7860`** 即可使用。
-
-> 前端介面由 FastAPI `StaticFiles` 直接提供服務，無需額外啟動前端伺服器。
-
-## 💬 使用範例
-
-| 問題 | 意圖大類 | 檢索策略與管線 |
-|------|------|----------|
-| 我壓肩做過最重幾公斤？ | `QA_INTENT` | 時間意圖 → 兩階段語意搜尋 → LLM 嚴格反思驗證 |
-| 我的胸推有進步嗎？ | `QA_INTENT` | FAISS 語意搜尋 → CrossEncoder 重排 → 趨勢分析 |
-| 幫我安排明天下半身的菜單 | `PLANNING_INTENT`| FAISS 抓取近期實力 → 跳過反思檢驗 → 動態切換教練 Prompt |
-
-## 📐 架構圖 (Agentic RAG Pipeline)
+### Agentic RAG Pipeline
 
 ```mermaid
 graph TD
-    User([使用者提問]) --> Router[Intent Router<br/>意圖分類與關鍵字提煉]
+    User([使用者提問]) --> Memory[Memory Manager<br/>撈取近 5 輪對話]
+    Memory --> Router[Intent Router<br/>LLM 意圖分類 + 關鍵字提煉]
     
-    %% Intent Router Branches
     Router -->|PLANNING_INTENT| PlannerBranch[切換 Prompt: 規劃教練]
     Router -->|QA_INTENT| QABranch[切換 Prompt: 嚴謹分析]
     
-    QABranch --> Ret[Retriever Strategy<br/>FAISS, 時間/全量/語意]
+    QABranch --> Ret[Retrieval Strategy<br/>Qdrant 語意/時間/全量]
     PlannerBranch --> Ret
     
-    %% Two Stage Retrieval
-    Ret -->|Top 10| Reranker[CrossEncoder Reranker<br/>二次深度算分]
-    Reranker -->|Top 3| Eval{Context Evaluation<br/>Self-Reflection}
+    Ret -->|"Top 10 (user_id filter)"| Reranker[CrossEncoder Reranker<br/>深度語意重排]
+    Reranker -->|Top 3| Eval{Self-Reflection<br/>相關性判定}
     
-    %% Agentic Workflow (For QA)
-    Eval -->|NO 無關| Rewrite[Query Rewrite<br/>改寫關鍵字]
+    Eval -->|"NO 無關"| Rewrite[Query Rewrite<br/>改寫關鍵字]
     Rewrite -.迴圈重搜.-> Ret
     
-    %% Generation
-    Eval -->|YES 相關<br/>或 PLANNING 意圖| Gen[LLM Service<br/>純函數清洗與生成]
-    
+    Eval -->|"YES 相關"| Gen[LLM Generation<br/>帶入對話記憶]
     PlannerBranch -.規劃意圖特權.-> Gen
-    Gen --> Final_Answer([系統最終回覆])
+    Gen --> Save[儲存至 SQLite<br/>Long-Term Memory]
+    Save --> Final([系統最終回覆])
 ```
 
-## 🌟 開發史：從 MVP 到企業級架構演進
+### 認證流程
 
-本專案實現了從「簡易 MVP 腳本」跨入「企業級架構」的八大重構里程碑：
+```mermaid
+sequenceDiagram
+    participant U as 使用者
+    participant F as Frontend
+    participant B as Backend API
+    participant DB as SQLite
+    
+    U->>F: 填寫帳密 → 登入
+    F->>B: POST /api/auth/login
+    B->>DB: 驗證 username + password_hash
+    DB-->>B: ✅ 比對成功
+    B-->>F: { access_token, user_id, username }
+    F->>F: 儲存 Token 至 localStorage
+    
+    U->>F: 輸入問題
+    F->>B: POST /api/chat (Bearer Token)
+    B->>B: 解析 JWT → 取得 user_id
+    B->>DB: 撈取 chat_history (Sliding Window)
+    B->>B: Intent Route → Retrieve → Generate
+    B->>DB: 儲存問答至 chat_history
+    B-->>F: { answer, session_id }
+```
 
-1. **模組化重構 (Modular Architecture)**
-   - 將原本肥大的單一檔案拆分為標準 `src/` 領域驅動架構 (`api`, `services`, `models`, `config`)。
-   - 全面改採 Pydantic 管理資料綱要，並實作單例模式 (Singleton) 服務降載。
-2. **導入意圖路由 (LLM Intent Routing)**
-   - 捨棄死板的正則表達式 (Regex) 關鍵字猜測。
-   - 導入 LangChain `with_structured_output`，利用 Llama 3 毫秒級智能判斷「時間」、「統計」與「語意搜尋」意圖，並區分 QA 與 PLANNING 意圖類別。
-3. **GPU 解析與防爆機制 (GPU Semantic Chanking & Payload Limits)**
-   - 擴充 `pypdf` 支援，成功匯入數千頁厚重的原文生物力學與教練手冊。
-   - 捨棄固定字數切割，升級為 **LangChain SemanticChunker**，並結合本機 **NVIDIA GTX 1050 Ti (CUDA 11.8)** 達成極速語意識別與 FAISS 向量建置。
-   - 因應免費 API 嚴苛的限制，實作文字截斷管線徹底解決 Payload 崩潰問題。
-4. **多模型切換工廠 (LLM Factory)**
-   - 貫徹 SOLID 依賴反轉原則 (DIP)，將 ChatModel 初始化從核心服務中剝離。
-   - 實作工廠模式，支援從前端介面一鍵切換 Groq (Llama-3), OpenAI (GPT-4o) 以及 Ollama 本地離線模型。
-5. **兩階段檢索 (Two-Stage Retrieval)**
-   - 導入 `sentence_transformers` 的 `CrossEncoder` (`BAAI/bge-reranker-base`)。
-   - 第一階段 FAISS 擴大召回率抓取 10 筆，第二階段 CrossEncoder 進行深度語意打分重排，精準截取 Top 3 給 LLM，大幅提升抗雜訊能力。
-6. **Agentic RAG 工作流 (自我反思與查詢改寫)**
-   - 終結單向線性問答，實作 `AgenticWorkflow`。
-   - 導入 **Self-Reflection** 評估機制：若系統判定檢索資料無關 (NO)，將自動觸發 **Query Rewrite** 改寫擴展關鍵字重新檢索，徹底避免幻覺 (Hallucination)。
-7. **意圖分類與 LLM-as-a-Judge 自動量化評估**
-   - 將意圖嚴格區分為 `QA_INTENT` 與 `PLANNING_INTENT`，動態切換嚴格/擴展提示詞，解決生成型任務因 RAG 限制造成的矛盾。
-   - 導入 `tests/evaluate_rag.py`，利用強大模型作為裁判，針對 Context Precision, Faithfulness 與 Answer Relevance 進行自動化 0~1 的嚴格打分，為未來的實驗提供客觀量化指標。
-8. **前端架構遷移 (Streamlit → React SPA + Glassmorphism)**
-   - 捨棄 Streamlit 的 iFrame 限制，全面遷移至 **React 18 + Tailwind CSS** 的純靜態 SPA。
-   - 設計語言採用極致 **Glassmorphism (玻璃擬態)** 風格：流體動態漸層背景、`backdrop-blur-xl` 毛玻璃容器、環境光球散射。
-   - 前端由 FastAPI `StaticFiles` 直接提供服務，API 呼叫走同源 `/api/chat`，無需跨域設定。
-   - 介面包含：漸層對話氣泡、User Profile 數據卡片、Sources 參考文獻展開、三點打字動畫、友善錯誤提示。
+### 專案結構
 
-## ⚙️ 自訂設定 / 預防 API Rate Limits
+```
+rag-fitness-coach/
+│
+├── backend/                              # 🐍 FastAPI 後端
+│   ├── main.py                           # uvicorn 啟動入口 (:8000)
+│   ├── requirements.txt
+│   ├── .env                              # GROQ_API_KEY, JWT_SECRET_KEY
+│   ├── data/
+│   │   ├── fitai_memory.db               # SQLite (users, sessions, chat_history)
+│   │   └── qdrant_storage/               # Qdrant 向量索引
+│   └── src/
+│       ├── api/
+│       │   ├── server.py                 # FastAPI app factory (CORS 設定)
+│       │   ├── endpoints.py              # POST /api/chat (Optional Auth)
+│       │   └── auth.py                   # POST /api/auth/* (JWT 認證)
+│       ├── config/settings.py            # 環境變數與 JWT 設定
+│       ├── db/database.py                # SQLite Schema 初始化
+│       ├── models/schemas.py             # Pydantic 資料模型
+│       └── services/
+│           ├── auth_service.py           # 密碼雜湊 + JWT 簽發
+│           ├── memory_manager.py         # 對話記憶滑動視窗
+│           ├── intent_router.py          # LLM 意圖路由 (Semantic Router)
+│           ├── agent_workflow.py         # Agentic RAG 主迴圈
+│           ├── llm_service.py            # LLM 回覆生成
+│           ├── llm_factory.py            # 多模型切換工廠 (DIP)
+│           ├── retrieval_strategy.py     # 檢索策略 (Strategy Pattern)
+│           ├── vector_service.py         # Qdrant 向量操作 + 多租戶隔離
+│           └── embedding_service.py      # CUDA Embedding 模型載入
+│
+├── frontend/                             # ⚛️ React + Vite 前端
+│   ├── package.json
+│   ├── vite.config.js
+│   ├── index.html
+│   └── src/
+│       ├── main.jsx                      # 應用程式入口
+│       ├── App.jsx                       # React Router 路由設定
+│       ├── api/client.js                 # fetch wrapper (自動帶 JWT)
+│       ├── context/AuthContext.jsx        # Token 狀態管理 + localStorage
+│       ├── pages/
+│       │   ├── LoginPage.jsx             # 登入 / 註冊 / 匿名入口
+│       │   └── ChatPage.jsx              # 聊天介面 + Markdown 渲染
+│       └── styles/index.css              # Glassmorphism 設計系統
+│
+└── README.md
+```
 
-由於我們使用了 Groq 免費方案，有極為嚴格的 TPM (Tokens Per Minute) 和 TPD (Tokens Per Day) 上限：
-- **若使用免費金鑰 (`llama-3.1-8b-instant`)**：系統會自動截斷過長的檢索文字，確保不會觸發 `413 Request Too Large` 錯誤。
-- **若使用付費版金鑰 (`llama-3.3-70b-versatile`)**：請在左側設定面板勾選「💎 付費版 Pro Key」。系統會自動解放所有上下文限制，享受完整無閹割的高智商 Agentic RAG 分析。
+### 核心設計模式
+
+| 模式 | 實作位置 | 說明 |
+|------|---------|------|
+| **Factory Pattern** | `llm_factory.py` | Groq / OpenAI / Ollama 一鍵切換 |
+| **Strategy Pattern** | `retrieval_strategy.py` | Semantic / Temporal / All 檢索策略 |
+| **Singleton** | `vector_service.py`, `embedding_service.py` | 避免重複載入 GPU 模型 |
+| **Dependency Inversion** | `intent_router.py` → `llm_factory` | 高層模組不依賴低層實作 |
+| **Sliding Window** | `memory_manager.py` | 最近 5 輪對話作為 LLM 上下文 |
+
+---
+
+## 🚀 Part 3 — 技術傳教士：如何啟動？如何參與？
+
+### 環境需求
+
+- Python 3.10+
+- Node.js 18+
+- NVIDIA GPU (有 CUDA 更佳，CPU 也能跑)
+- [Groq API Key](https://console.groq.com/) (免費)
+
+### 快速啟動 (3 步驟)
+
+**Step 1 — 後端**
+
+```bash
+cd backend
+
+# 安裝 Python 依賴
+pip install -r requirements.txt
+
+# 設定你的 API Key
+cp .env.example .env
+# 編輯 .env → 填入 GROQ_API_KEY
+
+# 準備訓練資料 (放入 data/ 資料夾)
+python -m src.indexer
+
+# 啟動後端 API
+python main.py
+# → http://localhost:8000
+```
+
+**Step 2 — 前端**
+
+```bash
+cd frontend
+
+npm install
+npm run dev
+# → http://localhost:5173
+```
+
+**Step 3 — 打開瀏覽器**
+
+前往 **http://localhost:5173** → 註冊帳號 → 開始跟你的 AI 教練聊天！
+
+> 💡 不想註冊？點「🚀 不登入，直接使用」也能用匿名模式問問題。
+
+### API 端點一覽
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `POST` | `/api/auth/register` | ❌ | 註冊新帳號 |
+| `POST` | `/api/auth/login` | ❌ | 登入取得 JWT |
+| `GET`  | `/api/auth/me` | 🔑 | 取得當前登入者資訊 |
+| `POST` | `/api/chat` | ⚡ Optional | 發問 (帶 Token = 個人化+記憶，不帶 = 匿名) |
+| `GET`  | `/api/health` | ❌ | 系統健康檢查 |
+
+### 自訂 LLM 提供者
+
+FitAI 透過工廠模式支援多種 LLM 後端，在前端或 API 呼叫時指定即可：
+
+```json
+{
+  "question": "我深蹲做多重？",
+  "llm_provider": "groq",
+  "model_name": "llama-3.1-8b-instant"
+}
+```
+
+| Provider | 模型範例 | 說明 |
+|----------|---------|------|
+| `groq` | `llama-3.1-8b-instant` | 預設，免費極快 |
+| `openai` | `gpt-4o-mini` | OpenAI 雲端 |
+| `ollama` | `llama3.1` | 本機離線模型 |
+
+### 開發史里程碑
+
+```mermaid
+graph LR
+    V1["v1.0<br/>單檔 MVP"]
+    V2["v2.0<br/>模組化<br/>SOLID"]
+    V3["v3.0<br/>Intent Router<br/>Two-Stage"]
+    V4["v4.0<br/>Agentic Workflow<br/>Self-Reflection"]
+    V5["v5.0<br/>Multi-Tenancy<br/>Qdrant"]
+    V6["v6.0<br/>Memory<br/>SQLite"]
+    V7["v7.0<br/>前後端分離<br/>JWT Auth"]
+    
+    V1 --> V2 --> V3 --> V4 --> V5 --> V6 --> V7
+    
+    style V7 fill:#3B82F6,color:#fff
+```
+
+1. **v1.0** — 單一 Python 腳本，直接丟檔案問 LLM
+2. **v2.0** — 模組化重構，導入 SOLID 原則與 Pydantic
+3. **v3.0** — LLM 意圖路由 + 兩階段檢索 (FAISS + CrossEncoder)
+4. **v4.0** — Agentic Workflow：Self-Reflection + Query Rewrite 迴圈
+5. **v5.0** — 多租戶隔離：FAISS → Qdrant + user_id Metadata Filter
+6. **v6.0** — 長期記憶：SQLite 儲存 Sessions & Chat History
+7. **v7.0** — 前後端分離 + JWT 認證 + React Vite SPA ← **你在這裡**
+
+### 如何貢獻
+
+1. Fork 本專案
+2. 建立 feature branch (`git checkout -b feat/your-feature`)
+3. Commit 你的修改 (`git commit -m 'feat: 新功能描述'`)
+4. Push 到你的 fork (`git push origin feat/your-feature`)
+5. 開啟 Pull Request
+
+**歡迎貢獻的方向：**
+- 🐳 Docker Compose 一鍵部署 (前端 + 後端 + Qdrant Server)
+- 📱 React Native 手機 App
+- 🔐 OAuth 2.0 社群登入 (Google / Line)
+- 📊 使用者訓練數據視覺化 Dashboard
+- 🧪 更完整的 E2E 自動化測試
+
+---
 
 ## 📝 License
 
 MIT
+
+]]>

@@ -1,6 +1,5 @@
 fastapi
 uvicorn[standard]
-streamlit
 qdrant-client
 langchain-qdrant
 sentence-transformers
@@ -15,3 +14,4 @@ pypdf
 langchain-experimental
 langchain-openai
 cryptography>=41.0.0
+python-jose[cryptography]
