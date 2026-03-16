@@ -1,34 +1,46 @@
-# 使用相對輕量的 Python 3.11 作為基底
+# 階段一：構建前端 (Node.js)
+FROM node:20-slim AS frontend-builder
+WORKDIR /app/frontend
+
+COPY frontend/package.json frontend/package-lock.json* ./
+RUN npm install
+
+COPY frontend/ .
+RUN npm run build
+
+
+# 階段二：構建後端與最終映像檔 (Python)
 FROM python:3.11-slim
 
-# 設定容器工作目錄
+# 設定容器工作目錄為 backend 所在的層級
 WORKDIR /app
 
-# 強制 Python 立刻輸出 Log，不要放進 Buffer 導致平台收不到健康檢查
+# 強制 Python 立刻輸出 Log
 ENV PYTHONUNBUFFERED=1
 
-# 安裝系統層級的編譯工具 (如果 FAISS 需要)
-RUN apt-get update && apt-get install -y \
-    build-essential \
-    && rm -rf /var/lib/apt/lists/*
+COPY backend/requirements.txt backend/
+RUN pip install --no-cache-dir -r backend/requirements.txt
 
-# 複製套件清單並安裝
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-# [最佳化] 在建置映像檔時預先下載 HuggingFace 模型，避免每次啟動容器都要等幾分鐘下載 1GB 模型
-RUN python -c "from langchain_community.embeddings import HuggingFaceBgeEmbeddings; HuggingFaceBgeEmbeddings(model_name='BAAI/bge-small-zh-v1.5')"
+# 預先下載常用模型 (利用 Docker Layer Cache)
+RUN python -c "from langchain_community.embeddings import HuggingFaceBgeEmbeddings; HuggingFaceBgeEmbeddings(model_name='BAAI/bge-small-zh-v1.5', encode_kwargs={'normalize_embeddings': True})"
 RUN python -c "from sentence_transformers import CrossEncoder; CrossEncoder('BAAI/bge-reranker-base', max_length=512)"
 
-# 複製所有專案原始碼與資料壓縮進映像檔
-COPY . .
+# 複製後端程式碼與資料 (確保包含了 backend/src, backend/data 等等)
+COPY backend/ backend/
 
-# [強烈建議] 建置 Image 期間直接把 42MB 原文書切塊做成 FAISS 向量庫
-# 這樣一來啟動 Container 時就不會因為要算 10 分鐘的數學而觸發 Hugging Face 的 Startup Timeout！
-RUN python -m src.indexer
+# 將前端打包好的產物，複製到後端能讀到的 static 資料夾
+COPY --from=frontend-builder /app/frontend/dist backend/static
+
+# [預設動作] 在建置期間建立 Qdrant 索引 (若原本已經存在則視情況不重建，這裡預設先執行)
+# 如果希望每次啟動時才建立，可以把這行拿掉，由 main.py 自動偵測執行
+RUN cd backend && python -m src.indexer
 
 # 暴露 FastAPI 連接埠（同時 Serve React SPA 前端）
 EXPOSE 7860
 
-# 預設啟動腳本
+# 因為從 /app 作為 WORKDIR，我們需要切換環境變數或確保直接執行 backend/main.py (注意 main.py 有自己的 uvicorn 啟動路徑)
+ENV PYTHONPATH=/app/backend
+WORKDIR /app/backend
+
+# 把 backend 內部的 port 開放在 7860 以符合 HF Space 需求
 CMD ["python", "main.py"]

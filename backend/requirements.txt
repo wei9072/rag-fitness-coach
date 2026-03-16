@@ -15,3 +15,5 @@ langchain-experimental
 langchain-openai
 cryptography>=41.0.0
 python-jose[cryptography]
+aiofiles
+python-multipart
