@@ -70,8 +70,22 @@ async def chat_endpoint(req: ChatRequest):
     except Exception as e:
         import traceback
         traceback.print_exc()
-        # 若任何底層拋出異常，一律由 API 層攔截並標上HTTP 500
-        raise HTTPException(status_code=502, detail=f"系統異常：{str(e)}")
+        
+        # 將系統錯誤轉換為給使用者的對話回覆
+        error_msg = str(e)
+        if "API Key" in error_msg or "驗證" in error_msg:
+            answer = f"⚠️ 發生錯誤：{error_msg}\n\n👉 **解決方法：** 請確認您已經在設定中填寫了對應模型的 API Key。"
+        else:
+            answer = f"⚠️ 系統發生異常：{error_msg}\n\n👉 **解決方法：** 請檢查系統設定是否有誤，或稍後再試。"
+
+        # 嘗試取得 session_id，若尚未建立則使用請求中提供的
+        current_session = locals().get("session_id", req.session_id)
+        
+        # 為了讓前端能正常顯示對話並提示使用者，回傳 200 OK 和錯誤訊息
+        return ChatResponse(
+            answer=answer,
+            session_id=current_session
+        )
 
 
 @api_router.get("/health")

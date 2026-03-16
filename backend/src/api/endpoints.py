@@ -99,8 +99,19 @@ async def chat_endpoint(req: ChatRequest, request: Request):
     except Exception as e:
         import traceback
         traceback.print_exc()
-        raise HTTPException(status_code=502, detail=f"系統異常：{str(e)}")
+        
+        error_msg = str(e)
+        if "API Key" in error_msg or "驗證" in error_msg:
+            answer = f"⚠️ 發生錯誤：{error_msg}\n\n👉 **解決方法：** 請確認您已經在設定中填寫了對應模型的 API Key。"
+        else:
+            answer = f"⚠️ 系統發生異常：{error_msg}\n\n👉 **解決方法：** 請檢查系統設定是否有誤，或稍後再試。"
 
+        current_session = locals().get("session_id", req.session_id)
+        
+        return ChatResponse(
+            answer=answer,
+            session_id=current_session
+        )
 
 @api_router.get("/health")
 async def health_check():
