@@ -152,7 +152,8 @@ def collect_documents() -> list[Document]:
             all_docs.extend(docs)
 
     if not all_docs:
-        raise FileNotFoundError(f"在 {DATA_DIR} 中找不到任何支援的檔案 (.txt, .json, .pdf)")
+        print(f"  ⚠️ 在 {DATA_DIR} 中找不到任何支援的檔案 (.txt, .json, .pdf)")
+        return []
 
     with_date = sum(1 for d in all_docs if d.metadata.get("date"))
     print(f"\n✅ 合計 {len(all_docs)} 個區塊，其中 {with_date} 個有日期 Metadata")
@@ -163,26 +164,41 @@ def collect_documents() -> list[Document]:
 # 主流程
 # ─────────────────────────────────────────────────────────
 def build_index():
-    """讀取 → SemanticChunker(語意切塊) → FAISS 索引 → 儲存。"""
+    """讀取 → SemanticChunker(語意切塊) → Qdrant 索引 → 儲存。"""
+    QDRANT_DIR = BASE_DIR / "data" / "qdrant_storage"
+    
+    # [新增] 檢查向量資料庫是否已經存在
+    # Qdrant 本地模式通常會產生一個 collection_name 的目錄或 meta 檔案
+    # 這裡檢查整個目錄是否存在且不為空
+    index_exists = QDRANT_DIR.exists() and any(QDRANT_DIR.iterdir())
+
     print("📂 掃描 data/ 資料夾...")
     docs = collect_documents()
 
+    if not docs:
+        if index_exists:
+            print(f"✨ 偵測到現有的向量資料庫於 {QDRANT_DIR}，且無新檔案需索引，跳過建立流程。")
+            return
+        else:
+            print("❌ 錯誤：找不到來源檔案且無現有索引，無法提供服務。")
+            return
+
     for i, d in enumerate(docs):
         date_str = d.metadata.get("date") or "無日期"
-        print(f"  [{i}] ({date_str}) {d.page_content[:50]}...")
+        # 避免大量 log
+        if i < 5 or i >= len(docs) - 1:
+            print(f"  [{i}] ({date_str}) {d.page_content[:50]}...")
 
     print(f"\n⏳ 準備建立 Qdrant 本地索引...")
     
     from langchain_qdrant import QdrantVectorStore
-    QDRANT_DIR = BASE_DIR / "data" / "qdrant_storage"
-    # Qdrant 自動處理目錄建立，如果已經存在 collection 則會複寫或新增
     
     vectorstore = QdrantVectorStore.from_documents(
         docs, 
         _chunking_embeddings, 
         path=str(QDRANT_DIR),
         collection_name="fitness_logs",
-        force_recreate=True # 每次執行 indexer 都重新建立以確保乾淨
+        force_recreate=True 
     )
 
     print(f"\n🎉 索引已儲存至 {QDRANT_DIR} (Qdrant Local Storage 模式)")

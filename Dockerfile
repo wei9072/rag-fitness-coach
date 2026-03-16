@@ -27,6 +27,8 @@ RUN python -c "from sentence_transformers import CrossEncoder; CrossEncoder('BAA
 
 # 複製後端程式碼與資料 (確保包含了 backend/src, backend/data 等等)
 COPY backend/ backend/
+# 複製根目錄的原始資料 (PDF/TXT) 進入後端目錄，供 indexer 使用
+COPY data/ backend/data/
 
 # 將前端打包好的產物，複製到後端能讀到的 static 資料夾
 COPY --from=frontend-builder /app/frontend/dist backend/static
