@@ -55,6 +55,7 @@ export async function chatAPI(question, sessionId = null, options = {}) {
   const body = {
     question,
     session_id: sessionId,
+    api_key: options.api_key || null,
     llm_provider: options.llm_provider || 'groq',
     model_name: options.model_name || null,
     is_paid: options.is_paid || false,

@@ -45,6 +45,24 @@ def init_db():
             )
         """)
         
+        # Training Logs Table (結構化訓練紀錄，供聚合查詢 Text-to-SQL)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS training_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT NOT NULL,
+                date TEXT NOT NULL,
+                exercise TEXT NOT NULL,
+                weight_kg REAL,
+                reps INTEGER NOT NULL,
+                sets INTEGER NOT NULL DEFAULT 1,
+                note TEXT,
+                source TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_tl_user_date ON training_logs(user_id, date)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_tl_user_exercise ON training_logs(user_id, exercise)")
+
         # 嘗試 ALTER TABLE 補齊 username / password_hash，如果舊資料庫沒有這些欄位
         try:
             cursor.execute("ALTER TABLE users ADD COLUMN username TEXT UNIQUE")
@@ -71,6 +89,51 @@ def get_db_connection() -> Generator[sqlite3.Connection, None, None]:
         yield conn
     finally:
         conn.close()
+
+# ════════════════════════════════════════
+# Training Logs 工具函式
+# ════════════════════════════════════════
+
+def insert_training_logs(records: list[dict]) -> int:
+    """批次寫入結構化訓練紀錄，回傳插入筆數。"""
+    if not records:
+        return 0
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.executemany(
+            """INSERT INTO training_logs
+               (user_id, date, exercise, weight_kg, reps, sets, note, source)
+               VALUES (:user_id, :date, :exercise, :weight_kg, :reps, :sets, :note, :source)""",
+            records
+        )
+        conn.commit()
+        return cursor.rowcount
+
+
+def clear_training_logs_by_source(source: str, user_id: str = "default_user"):
+    """清除指定來源檔案的訓練紀錄（冪等重建用）。"""
+    with get_db_connection() as conn:
+        conn.execute(
+            "DELETE FROM training_logs WHERE source = ? AND user_id = ?",
+            (source, user_id)
+        )
+        conn.commit()
+
+
+def execute_safe_select(sql: str, params: dict | None = None) -> list[dict]:
+    """以唯讀模式執行 SELECT 查詢。非 SELECT 語句會被 SQLite 層級拒絕。"""
+    normalized = sql.strip().upper()
+    if not normalized.startswith("SELECT"):
+        raise ValueError("只允許 SELECT 查詢")
+
+    conn = sqlite3.connect(f"file:{DB_PATH}?mode=ro", uri=True)
+    conn.row_factory = sqlite3.Row
+    try:
+        cursor = conn.execute(sql, params or {})
+        return [dict(row) for row in cursor.fetchall()]
+    finally:
+        conn.close()
+
 
 # 在啟動時自動初始化資料表
 init_db()

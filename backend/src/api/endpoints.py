@@ -4,7 +4,7 @@ Chat 端點 (Endpoints)
 """
 import uuid
 from fastapi import APIRouter, HTTPException, Request
-from src.models.schemas import ChatRequest, ChatResponse
+from src.models.schemas import ChatRequest, ChatResponse, UploadRequest, UploadResponse
 from src.services.intent_router import intent_router
 from src.services.agent_workflow import agent_workflow
 from src.services.memory_manager import memory_manager
@@ -112,6 +112,29 @@ async def chat_endpoint(req: ChatRequest, request: Request):
             answer=answer,
             session_id=current_session
         )
+
+@api_router.post("/upload", response_model=UploadResponse)
+async def upload_training_data(req: UploadRequest, request: Request):
+    """上傳訓練資料（TXT 格式），需登入。增量寫入 Qdrant + SQLite。"""
+    user_id, is_authenticated = _extract_user_from_request(request)
+    if not is_authenticated:
+        raise HTTPException(status_code=401, detail="請先登入才能上傳訓練資料")
+
+    if not req.content.strip():
+        raise HTTPException(status_code=400, detail="上傳內容不可為空")
+
+    from src.indexer import ingest_user_training_text
+    result = ingest_user_training_text(
+        content=req.content,
+        user_id=user_id,
+        source_name=req.source_name or "user_upload",
+    )
+    return UploadResponse(
+        chunks_added=result["chunks_added"],
+        sql_records=result["sql_records"],
+        message=f"成功寫入 {result['chunks_added']} 個向量區塊與 {result['sql_records']} 筆結構化紀錄。",
+    )
+
 
 @api_router.get("/health")
 async def health_check():

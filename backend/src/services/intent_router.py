@@ -1,8 +1,7 @@
 from langchain_core.messages import SystemMessage, HumanMessage
-from src.config.settings import LLM_MODEL, GROQ_API_KEY
 from src.models.schemas import RouteDecision
 from src.services.retrieval_strategy import BaseRetriever, SemanticRetriever, TemporalRetriever, AllRetriever
-from src.services.llm_factory import get_llm
+from src.services.llm_factory import get_llm, resolve_model_and_key
 
 class IntentRouter:
     """
@@ -13,10 +12,12 @@ class IntentRouter:
         self._ROUTER_SYSTEM = (
             "你是一個健身紀錄檢索路由助手。\n"
             "【步驟 1：判定大分類 (intent_category)】\n"
-            "如果是詢問過去的訓練數據或紀錄，請設為 'QA_INTENT'。\n"
-            "如果是要求安排新菜單、給予未來訓練建議等生成性任務，請設為 'PLANNING_INTENT'。\n\n"
+            "如果是詢問過去的訓練數據或紀錄（描述性問答），請設為 'QA_INTENT'。\n"
+            "如果是要求安排新菜單、給予未來訓練建議等生成性任務，請設為 'PLANNING_INTENT'。\n"
+            "如果是詢問數值統計或聚合查詢（例如：最重多少、練了幾次、總組數、平均重量、PR 紀錄、訓練量排行），請設為 'AGGREGATE_INTENT'。\n\n"
             "【步驟 2：判定檢索策略 (intent)】\n"
-            "分析使用者的問題，決定最適合的檢索策略：\n"
+            "若 intent_category 為 'AGGREGATE_INTENT'，intent 固定填 'all'。\n"
+            "否則，分析使用者的問題，決定最適合的檢索策略：\n"
             "1. 'all': 使用者想要統計筆數、總金額、總次數或查看所有歷史紀錄時使用。\n"
             "2. 'temporal': 使用者詢問「最近」、「最新」、「上次」、「前N筆」紀錄時使用。\n"
             "3. 'semantic': 使用者詢問特定動作的表現、建議或具體內容時使用（語意向量搜尋）。\n\n"
@@ -36,17 +37,7 @@ class IntentRouter:
         根據客戶問題與近期對話紀錄，決定檢索方式與關鍵字
         回傳 (Retriever策略物件, 提煉後的搜尋字串, 意圖大類)
         """
-        # 模型決定邏輯 (預設使用 .env 或是設定好的預設值)
-        # 對於 groq，根據是否付費給定較強的模型，其他 provider 則依 model_name 或內部預設
-        if not model_name:
-            if llm_provider == "groq":
-                model_name = "llama-3.3-70b-versatile" if is_paid else LLM_MODEL
-            elif llm_provider == "openai":
-                model_name = "gpt-4o-mini"
-            elif llm_provider == "ollama":
-                model_name = "llama3.1" # ollama 本地預設
-
-        actual_api_key = api_key if api_key else GROQ_API_KEY
+        model_name, actual_api_key = resolve_model_and_key(llm_provider, model_name, api_key, is_paid)
         
         try:
             # 使用 DIP Factory 取得實例

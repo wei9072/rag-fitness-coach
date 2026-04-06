@@ -1,6 +1,5 @@
 from langchain_core.messages import SystemMessage, HumanMessage
-from src.config.settings import LLM_MODEL, GROQ_API_KEY
-from src.services.llm_factory import get_llm
+from src.services.llm_factory import get_llm, resolve_model_and_key
 
 _SYSTEM_PROMPT_QA = (
     "你是一位擁有 10 年經驗的專業健身顧問，根據使用者的訓練紀錄並結合自身專業知識來提供建議與回答問題。\n\n"
@@ -61,15 +60,7 @@ class LLMService:
         ]
         
         # 動態建立 LLM 實體 (DIP)
-        if not model_name:
-            if llm_provider == "groq":
-                model_name = "llama-3.3-70b-versatile" if is_paid else LLM_MODEL
-            elif llm_provider == "openai":
-                model_name = "gpt-4o"
-            elif llm_provider == "ollama":
-                model_name = "llama3.1"
-
-        actual_api_key = api_key if api_key else GROQ_API_KEY
+        model_name, actual_api_key = resolve_model_and_key(llm_provider, model_name, api_key, is_paid)
         
         llm = get_llm(
             provider=llm_provider,

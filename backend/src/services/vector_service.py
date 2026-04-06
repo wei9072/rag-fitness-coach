@@ -43,13 +43,38 @@ class VectorService:
         return cls._instance
 
     def _get_user_filter(self, user_id: str) -> models.Filter:
-        """建立針對特定使用者的 Metadata Filter"""
+        """回傳「該使用者的個人資料 OR 共享知識庫」的複合 Filter（語意搜尋用）"""
+        return models.Filter(
+            should=[
+                # 該使用者的個人訓練資料
+                models.Filter(must=[
+                    models.FieldCondition(
+                        key="metadata.user_id",
+                        match=models.MatchValue(value=user_id)
+                    ),
+                ]),
+                # 共享知識庫（PDF 文獻）
+                models.Filter(must=[
+                    models.FieldCondition(
+                        key="metadata.data_type",
+                        match=models.MatchValue(value="knowledge_base")
+                    ),
+                ]),
+            ]
+        )
+
+    def _get_personal_filter(self, user_id: str) -> models.Filter:
+        """僅回傳該使用者的個人訓練資料（temporal/all 檢索用，排除 PDF 雜訊）"""
         return models.Filter(
             must=[
                 models.FieldCondition(
                     key="metadata.user_id",
                     match=models.MatchValue(value=user_id)
-                )
+                ),
+                models.FieldCondition(
+                    key="metadata.data_type",
+                    match=models.MatchValue(value="personal")
+                ),
             ]
         )
 
@@ -66,8 +91,8 @@ class VectorService:
         return [d.page_content for d in docs]
 
     def get_all_sorted_by_date(self, user_id: str) -> list[str]:
-        """讀取特定 user_id 的全量資料並依據時間降序"""
-        user_filter = self._get_user_filter(user_id)
+        """讀取特定 user_id 的個人訓練資料並依據時間降序（排除共享知識庫）"""
+        user_filter = self._get_personal_filter(user_id)
         
         # 使用 Qdrant client 原生 scroll API 抓取特定 user 所有的點
         records, _ = self.client.scroll(

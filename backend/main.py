@@ -9,8 +9,24 @@ def main():
     print("🚀 啟動 RAG 健身建議系統（後端）...")
 
     index_path = os.path.join("data", "qdrant_storage")
-    if not os.path.exists(index_path):
-        print("⚠️ 未偵測到 Qdrant 向量庫 (data/qdrant_storage)，開始自動建立索引...")
+    qdrant_exists = os.path.exists(index_path)
+
+    # 檢查 SQLite training_logs 是否有資料
+    has_training_logs = False
+    try:
+        from src.db.database import execute_safe_select
+        rows = execute_safe_select("SELECT COUNT(*) as cnt FROM training_logs", {})
+        has_training_logs = rows[0]["cnt"] > 0
+    except Exception:
+        pass
+
+    if not qdrant_exists or not has_training_logs:
+        reason = []
+        if not qdrant_exists:
+            reason.append("Qdrant 向量庫")
+        if not has_training_logs:
+            reason.append("SQLite training_logs")
+        print(f"⚠️ 未偵測到 {' 和 '.join(reason)}，開始自動建立索引...")
         from src.indexer import build_index
         build_index()
 

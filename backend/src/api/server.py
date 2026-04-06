@@ -5,7 +5,7 @@ from src.api.auth import auth_router
 
 def create_app() -> FastAPI:
     """工廠模式建立 FastAPI 實例"""
-    app = FastAPI(title="個人化 AI 健身建議系統 (前後端分離架構)", version="3.0.0")
+    app = FastAPI(title="個人化 AI 健身建議系統 (前後端分離架構)", version="7.0.0")
     
     # 掛載 CORS — 明確允許前端 Vite 開發伺服器
     app.add_middleware(

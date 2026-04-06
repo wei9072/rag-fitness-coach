@@ -1,10 +1,11 @@
 from langchain_core.messages import SystemMessage, HumanMessage
 from pydantic import BaseModel, Field
 from typing import Literal
-from src.config.settings import GROQ_API_KEY, LLM_MODEL
-from src.services.llm_factory import get_llm
+from src.services.llm_factory import get_llm, resolve_model_and_key
 from src.services.llm_service import llm_service
 from src.services.retrieval_strategy import BaseRetriever
+from src.models.schemas import SqlGeneration
+from src.db.database import execute_safe_select
 
 class ContextEvaluation(BaseModel):
     """用於約束 LLM 結構化輸出的評估結果"""
@@ -22,7 +23,29 @@ class AgenticWorkflow:
     """
     def __init__(self):
         self.max_retries = 2
-        
+
+        # Text-to-SQL Prompt
+        self.text_to_sql_system_prompt = (
+            "你是一個 Text-to-SQL 助手。根據使用者的健身相關問題，生成精確的 SQLite SELECT 語句。\n\n"
+            "## 資料表結構\n"
+            "TABLE: training_logs\n"
+            "- user_id TEXT (使用者 ID)\n"
+            "- date TEXT (YYYY-MM-DD 格式)\n"
+            "- exercise TEXT (動作名稱，例如 '深蹲', '壓肩', '啞鈴肩推', '史密斯RDL', '正手滑輪高位下拉')\n"
+            "- weight_kg REAL (重量公斤，NULL 表示自重)\n"
+            "- reps INTEGER (每組反覆次數)\n"
+            "- sets INTEGER (該重量×次數的組數)\n"
+            "- note TEXT (備註，例如 '空槓', '單邊', '自重')\n\n"
+            "## 規則\n"
+            "1. 只能生成 SELECT 語句\n"
+            "2. 必須包含 WHERE user_id = :user_id 條件\n"
+            "3. exercise 欄位用 LIKE '%關鍵字%' 做模糊匹配\n"
+            "4. 常用聚合: MAX(weight_kg) 最重, COUNT(DISTINCT date) 訓練天數, SUM(reps * sets) 總次數\n"
+            "5. 總訓練量 (volume) = SUM(weight_kg * reps * sets)\n"
+            "6. 日期比較用字串比較 (YYYY-MM-DD 天然排序)\n"
+            "7. 適當使用 GROUP BY、ORDER BY 組織結果\n"
+        )
+
         # 評估用 Prompt
         self.eval_system_prompt = (
             "你是一個嚴格的上下文評估員 (Context Evaluator)。"
@@ -58,20 +81,25 @@ class AgenticWorkflow:
         執行 Agent Loop。
         回傳: (最終生成的回答, 使用的檢索文件列表)
         """
+        # ── AGGREGATE_INTENT → Text-to-SQL 短路 ──
+        if intent_category == "AGGREGATE_INTENT":
+            print("📊 [Agent Loop] AGGREGATE_INTENT detected, routing to Text-to-SQL...")
+            return self._run_aggregate_sql(
+                original_query=original_query,
+                user_id=user_id,
+                chat_history=chat_history,
+                api_key=api_key,
+                is_paid=is_paid,
+                llm_provider=llm_provider,
+                model_name=model_name,
+                user_profile=user_profile,
+            )
+
         current_query = refined_query
         retries = 0
         all_retrieved_docs = []
         
-        # 決定預設 Model 與 API Key
-        if not model_name:
-            if llm_provider == "groq":
-                model_name = "llama-3.3-70b-versatile" if is_paid else LLM_MODEL
-            elif llm_provider == "openai":
-                model_name = "gpt-4o-mini"
-            elif llm_provider == "ollama":
-                model_name = "llama3.1"
-                
-        actual_api_key = api_key if api_key else GROQ_API_KEY
+        model_name, actual_api_key = resolve_model_and_key(llm_provider, model_name, api_key, is_paid)
         
         # 建立共用的決策 LLM (透過 Factory 實踐 DIP)
         decision_llm = get_llm(
@@ -156,6 +184,94 @@ class AgenticWorkflow:
                 
         # 防呆回傳
         return "在您的健身紀錄中找不到足夠且精準的資訊。", all_retrieved_docs
+
+    # ════════════════════════════════════════
+    # Text-to-SQL 聚合查詢
+    # ════════════════════════════════════════
+
+    def _run_aggregate_sql(
+        self,
+        original_query: str,
+        user_id: str,
+        chat_history: str = "",
+        api_key: str | None = None,
+        is_paid: bool = False,
+        llm_provider: str = "groq",
+        model_name: str | None = None,
+        user_profile: str | None = None,
+    ) -> tuple[str, list[str]]:
+        """Text-to-SQL 路線：LLM 生成 SQL → 唯讀執行 → LLM 組裝自然語言回覆。"""
+
+        model_name, actual_api_key = resolve_model_and_key(llm_provider, model_name, api_key, is_paid)
+
+        sql_llm = get_llm(
+            provider=llm_provider,
+            model_name=model_name,
+            api_key=actual_api_key,
+            temperature=0.0,
+        )
+        sql_generator = sql_llm.with_structured_output(SqlGeneration)
+
+        # Step A: 動態補充可用的 exercise 清單
+        prompt = self.text_to_sql_system_prompt
+        try:
+            exercises = execute_safe_select(
+                "SELECT DISTINCT exercise FROM training_logs WHERE user_id = :user_id",
+                {"user_id": user_id},
+            )
+            if exercises:
+                names = ", ".join(f"'{r['exercise']}'" for r in exercises)
+                prompt += f"\n## 資料庫中現有的動作名稱\n{names}\n"
+        except Exception:
+            pass
+
+        if chat_history:
+            prompt += f"\n## 近期對話語境\n{chat_history}"
+
+        # Step B: 生成 SQL
+        try:
+            sql_result = sql_generator.invoke([
+                SystemMessage(content=prompt),
+                HumanMessage(content=original_query),
+            ])
+            generated_sql = sql_result.sql.strip()
+            print(f"  🗄️ [Text-to-SQL] SQL: {generated_sql}")
+            print(f"  🗄️ [Text-to-SQL] 說明: {sql_result.explanation}")
+        except Exception as e:
+            print(f"  ⚠️ [Text-to-SQL] SQL 生成失敗: {e}")
+            return "抱歉，無法理解您的數據查詢需求，請試著換個方式提問。", []
+
+        # Step C: 安全執行
+        try:
+            rows = execute_safe_select(generated_sql, {"user_id": user_id})
+        except Exception as e:
+            print(f"  ⚠️ [Text-to-SQL] SQL 執行失敗: {e}")
+            return f"查詢執行失敗，請換個方式提問。（錯誤：{e}）", [f"[SQL ERROR] {generated_sql}"]
+
+        # Step D: 格式化查詢結果
+        if not rows:
+            result_text = "查詢結果：無符合條件的紀錄。"
+        else:
+            lines = [str(row) for row in rows[:30]]
+            result_text = f"查詢結果（{len(rows)} 筆）：\n" + "\n".join(lines)
+
+        context = f"SQL 查詢：{generated_sql}\n說明：{sql_result.explanation}\n\n{result_text}"
+
+        # Step E: 用 LLM 生成自然語言回答
+        final_answer = llm_service.generate_reply(
+            question=original_query,
+            context_chunks=[context],
+            chat_history=chat_history,
+            api_key=api_key,
+            is_paid=is_paid,
+            user_profile=user_profile,
+            llm_provider=llm_provider,
+            model_name=model_name,
+            intent_category="QA_INTENT",  # 用嚴謹的 QA prompt
+        )
+
+        return final_answer, [f"[SQL] {generated_sql}"]
+
 
 # 輸出單例
 agent_workflow = AgenticWorkflow()

@@ -99,7 +99,7 @@ graph TB
 |------|---------|--------|
 | **前端** | React 19 + Vite + React Router | SPA 架構，熱重載開發，未來可遷移至 React Native |
 | **後端 API** | FastAPI + Pydantic | 非同步高效能，自動產出 OpenAPI 文件 |
-| **認證** | JWT (python-jose) + SHA-256 | 無狀態 Token Auth，前端 localStorage 持久化 |
+| **認證** | JWT (python-jose) + SHA-256 (static pepper) | 無狀態 Token Auth，前端 localStorage 持久化 |
 | **向量庫** | Qdrant (Local Storage) | 比 FAISS 更強大的 Metadata Filter 實現多租戶隔離 |
 | **關聯式 DB** | SQLite | 零設定輕量化，記憶/會話/使用者資料持久化 |
 | **Embedding** | BAAI/bge-small-zh-v1.5 (CUDA) | 中文語意最佳化，本機 GPU 加速 |
@@ -162,16 +162,25 @@ sequenceDiagram
 ```
 rag-fitness-coach/
 │
+├── Dockerfile                            # 🐳 多階段建置 (Node→Python, port 7860)
+├── .dockerignore
+├── .env.example                          # 根目錄環境變數範本 (GROQ_API_KEY)
+│
+├── data/                                 # 📚 原始訓練資料 (PDF/TXT)
+│   ├── *.pdf                             # ACSM、生物力學等健身文獻
+│   └── Train.txt                         # 訓練紀錄純文字檔
+│
 ├── backend/                              # 🐍 FastAPI 後端
 │   ├── main.py                           # uvicorn 啟動入口 (:8000)
 │   ├── requirements.txt
-│   ├── .env                              # GROQ_API_KEY, JWT_SECRET_KEY
+│   ├── .env.example                      # 後端環境變數範本 (GROQ_API_KEY, JWT_SECRET_KEY)
 │   ├── data/
-│   │   ├── fitai_memory.db               # SQLite (users, sessions, chat_history)
-│   │   └── qdrant_storage/               # Qdrant 向量索引
+│   │   ├── fitai_memory.db               # SQLite (users, sessions, chat_history) [執行時產生]
+│   │   └── qdrant_storage/               # Qdrant 向量索引 [執行時產生]
 │   └── src/
+│       ├── indexer.py                    # 向量索引建置腳本 (python -m src.indexer)
 │       ├── api/
-│       │   ├── server.py                 # FastAPI app factory (CORS 設定)
+│       │   ├── server.py                 # FastAPI app factory (CORS + SPA 靜態檔)
 │       │   ├── endpoints.py              # POST /api/chat (Optional Auth)
 │       │   └── auth.py                   # POST /api/auth/* (JWT 認證)
 │       ├── config/settings.py            # 環境變數與 JWT 設定
@@ -191,16 +200,24 @@ rag-fitness-coach/
 ├── frontend/                             # ⚛️ React + Vite 前端
 │   ├── package.json
 │   ├── vite.config.js
+│   ├── eslint.config.js
 │   ├── index.html
+│   ├── public/
+│   │   ├── favicon.svg
+│   │   └── icons.svg
 │   └── src/
 │       ├── main.jsx                      # 應用程式入口
 │       ├── App.jsx                       # React Router 路由設定
 │       ├── api/client.js                 # fetch wrapper (自動帶 JWT)
 │       ├── context/AuthContext.jsx        # Token 狀態管理 + localStorage
+│       ├── assets/                       # 靜態圖片資源
 │       ├── pages/
 │       │   ├── LoginPage.jsx             # 登入 / 註冊 / 匿名入口
 │       │   └── ChatPage.jsx              # 聊天介面 + Markdown 渲染
 │       └── styles/index.css              # Glassmorphism 設計系統
+│
+├── tests/
+│   └── evaluate_rag.py                   # RAG 品質評估腳本
 │
 └── README.md
 ```
@@ -228,6 +245,8 @@ rag-fitness-coach/
 
 ### 快速啟動 (3 步驟)
 
+#### 方式 A — 本機開發 (前後端分離)
+
 **Step 1 — 後端**
 
 ```bash
@@ -236,11 +255,11 @@ cd backend
 # 安裝 Python 依賴
 pip install -r requirements.txt
 
-# 設定你的 API Key
+# 設定環境變數
 cp .env.example .env
-# 編輯 .env → 填入 GROQ_API_KEY
+# 編輯 .env → 填入 GROQ_API_KEY 和 JWT_SECRET_KEY
 
-# 準備訓練資料 (放入 data/ 資料夾)
+# 準備訓練資料 (將 PDF/TXT 放入根目錄 data/ 資料夾)
 python -m src.indexer
 
 # 啟動後端 API
@@ -263,6 +282,19 @@ npm run dev
 前往 **http://localhost:5173** → 註冊帳號 → 開始跟你的 AI 教練聊天！
 
 > 💡 不想註冊？點「🚀 不登入，直接使用」也能用匿名模式問問題。
+
+#### 方式 B — Docker 一鍵部署
+
+```bash
+# 在根目錄建立 .env 並填入 GROQ_API_KEY
+cp .env.example .env
+
+docker build -t fitai .
+docker run -p 7860:7860 --env-file .env fitai
+# → http://localhost:7860 (前後端同時 Serve)
+```
+
+> Docker 映像採用多階段建置：先用 Node.js 打包前端，再由 Python 映像提供 FastAPI + SPA 靜態檔。訓練資料的向量索引在建置階段自動產生。
 
 ### API 端點一覽
 
@@ -326,7 +358,7 @@ graph LR
 5. 開啟 Pull Request
 
 **歡迎貢獻的方向：**
-- 🐳 Docker Compose 一鍵部署 (前端 + 後端 + Qdrant Server)
+- 🐳 Docker Compose 多容器部署 (前端 + 後端 + Qdrant Server 模式)
 - 📱 React Native 手機 App
 - 🔐 OAuth 2.0 社群登入 (Google / Line)
 - 📊 使用者訓練數據視覺化 Dashboard
