@@ -30,8 +30,9 @@ def main():
         from src.indexer import build_index
         build_index()
 
-    print("🌐 啟動 FastAPI 後端 API (http://localhost:8000) ...")
-    uvicorn.run("src.api.server:app", host="0.0.0.0", port=8000, log_level="info")
+    port = int(os.environ.get("PORT", 7860))
+    print(f"🌐 啟動 FastAPI 後端 API (http://0.0.0.0:{port}) ...")
+    uvicorn.run("src.api.server:app", host="0.0.0.0", port=port, log_level="info")
 
 if __name__ == "__main__":
     main()

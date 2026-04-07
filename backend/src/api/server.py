@@ -10,11 +10,7 @@ def create_app() -> FastAPI:
     # 掛載 CORS — 明確允許前端 Vite 開發伺服器
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=[
-            "http://localhost:5173",   # Vite dev server
-            "http://localhost:3000",   # 備用
-            "http://127.0.0.1:5173",
-        ],
+        allow_origins=["*"],
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
