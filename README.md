@@ -50,6 +50,7 @@ FitAI 是一套以 **RAG (Retrieval-Augmented Generation)** 為核心的 AI 健�
 |------|----------------|---------|
 | 我上週深蹲做多重？ | `QA_INTENT` → 時間檢索 | 從向量庫撈出最近紀錄，嚴格分析後回覆 |
 | 我的胸推有進步嗎？ | `QA_INTENT` → 語意搜尋 | 兩階段檢索 + CrossEncoder 重排，追蹤趨勢 |
+| 我深蹲最重多少公斤？ | `AGGREGATE_INTENT` | 繞過 RAG，直接 LLM → SQL → SQLite，精確查詢最大值 |
 | 幫我安排下半身訓練菜單 | `PLANNING_INTENT` | 切換教練 Prompt，結合你的近期實力生成個人化菜單 |
 | 那硬舉呢？ | 上下文延續 | 讀取對話記憶，理解省略的代名詞後再次檢索 |
 
@@ -68,12 +69,14 @@ graph TB
         F4["api/client.js"]
     end
     
-    subgraph "Backend — FastAPI (:8000)"
+    subgraph "Backend — FastAPI (:7860)"
         direction TB
         B_AUTH["Auth Router<br/>register / login / me"]
         B_CHAT["Chat Endpoint<br/>(Optional Auth)"]
+        B_UPLOAD["Upload Endpoint<br/>(Incremental Ingestion)"]
         B_ROUTER["Intent Router<br/>LLM Semantic Routing"]
         B_AGENT["Agentic Workflow<br/>Self-Reflection Loop"]
+        B_SQL["Text-to-SQL<br/>Aggregate Query"]
         B_RET["Retrieval Strategy<br/>Semantic / Temporal / All"]
         B_RERANK["CrossEncoder Reranker"]
         B_LLM["LLM Service<br/>Groq / OpenAI / Ollama"]
@@ -81,15 +84,21 @@ graph TB
     end
     
     subgraph "Data Layer"
-        D1["SQLite<br/>users, sessions, chat_history"]
-        D2["Qdrant<br/>vector embeddings<br/>(user_id metadata filter)"]
+        D1["SQLite<br/>users, sessions, chat_history<br/>training_logs"]
+        D2["Qdrant<br/>vector embeddings<br/>(user_id + data_type filter)"]
     end
     
     F1 -->|"HTTP"| B_AUTH
     F2 -->|"Bearer JWT"| B_CHAT
-    B_CHAT --> B_ROUTER --> B_RET --> B_RERANK --> B_AGENT --> B_LLM
+    F2 -->|"Bearer JWT"| B_UPLOAD
+    B_CHAT --> B_ROUTER
+    B_ROUTER -->|"QA / PLANNING"| B_RET --> B_RERANK --> B_AGENT --> B_LLM
+    B_ROUTER -->|"AGGREGATE"| B_SQL --> B_LLM
     B_CHAT --> B_MEM --> D1
     B_RET --> D2
+    B_SQL --> D1
+    B_UPLOAD --> D2
+    B_UPLOAD --> D1
     B_AUTH --> D1
 ```
 
@@ -100,8 +109,8 @@ graph TB
 | **前端** | React 19 + Vite + React Router | SPA 架構，熱重載開發，未來可遷移至 React Native |
 | **後端 API** | FastAPI + Pydantic | 非同步高效能，自動產出 OpenAPI 文件 |
 | **認證** | JWT (python-jose) + SHA-256 (static pepper) | 無狀態 Token Auth，前端 localStorage 持久化 |
-| **向量庫** | Qdrant (Local Storage) | 比 FAISS 更強大的 Metadata Filter 實現多租戶隔離 |
-| **關聯式 DB** | SQLite | 零設定輕量化，記憶/會話/使用者資料持久化 |
+| **向量庫** | Qdrant (Local Storage) | Metadata Filter (`user_id` + `data_type`) 實現多租戶隔離，分離個人紀錄與共享知識庫 |
+| **關聯式 DB** | SQLite | 零設定輕量化，記憶/會話/使用者資料 + 結構化訓練紀錄 (`training_logs`) 持久化 |
 | **Embedding** | BAAI/bge-small-zh-v1.5 (CUDA) | 中文語意最佳化，本機 GPU 加速 |
 | **Reranker** | BAAI/bge-reranker-base | CrossEncoder 二次深度打分，抑制雜訊 |
 | **LLM** | Groq / OpenAI / Ollama (Factory) | SOLID DIP 工廠模式，一鍵切換 |
@@ -116,11 +125,16 @@ graph TD
     
     Router -->|PLANNING_INTENT| PlannerBranch[切換 Prompt: 規劃教練]
     Router -->|QA_INTENT| QABranch[切換 Prompt: 嚴謹分析]
+    Router -->|AGGREGATE_INTENT| AggBranch[Text-to-SQL<br/>LLM 生成 SELECT]
     
+    AggBranch --> SQLite[(SQLite<br/>training_logs)]
+    SQLite --> AggLLM[LLM 自然語言格式化]
+    AggLLM --> Final
+
     QABranch --> Ret[Retrieval Strategy<br/>Qdrant 語意/時間/全量]
     PlannerBranch --> Ret
     
-    Ret -->|"Top 10 (user_id filter)"| Reranker[CrossEncoder Reranker<br/>深度語意重排]
+    Ret -->|"Top 10 (user_id + data_type filter)"| Reranker[CrossEncoder Reranker<br/>深度語意重排]
     Reranker -->|Top 3| Eval{Self-Reflection<br/>相關性判定}
     
     Eval -->|"NO 無關"| Rewrite[Query Rewrite<br/>改寫關鍵字]
@@ -171,17 +185,17 @@ rag-fitness-coach/
 │   └── Train.txt                         # 訓練紀錄純文字檔
 │
 ├── backend/                              # 🐍 FastAPI 後端
-│   ├── main.py                           # uvicorn 啟動入口 (:8000)
+│   ├── main.py                           # uvicorn 啟動入口 (PORT env, 預設 :7860)
 │   ├── requirements.txt
 │   ├── .env.example                      # 後端環境變數範本 (GROQ_API_KEY, JWT_SECRET_KEY)
 │   ├── data/
 │   │   ├── fitai_memory.db               # SQLite (users, sessions, chat_history) [執行時產生]
 │   │   └── qdrant_storage/               # Qdrant 向量索引 [執行時產生]
 │   └── src/
-│       ├── indexer.py                    # 向量索引建置腳本 (python -m src.indexer)
+│       ├── indexer.py                    # 向量索引建置腳本 (python -m src.indexer)；支援增量 ingest
 │       ├── api/
 │       │   ├── server.py                 # FastAPI app factory (CORS + SPA 靜態檔)
-│       │   ├── endpoints.py              # POST /api/chat (Optional Auth)
+│       │   ├── endpoints.py              # POST /api/chat (Optional Auth)、POST /api/upload (Auth required)
 │       │   └── auth.py                   # POST /api/auth/* (JWT 認證)
 │       ├── config/settings.py            # 環境變數與 JWT 設定
 │       ├── db/database.py                # SQLite Schema 初始化
@@ -226,11 +240,12 @@ rag-fitness-coach/
 
 | 模式 | 實作位置 | 說明 |
 |------|---------|------|
-| **Factory Pattern** | `llm_factory.py` | Groq / OpenAI / Ollama 一鍵切換 |
+| **Factory Pattern** | `llm_factory.py` | Groq / OpenAI / Ollama 一鍵切換，`resolve_model_and_key()` 統一模型選擇邏輯 |
 | **Strategy Pattern** | `retrieval_strategy.py` | Semantic / Temporal / All 檢索策略 |
 | **Singleton** | `vector_service.py`, `embedding_service.py` | 避免重複載入 GPU 模型 |
 | **Dependency Inversion** | `intent_router.py` → `llm_factory` | 高層模組不依賴低層實作 |
 | **Sliding Window** | `memory_manager.py` | 最近 5 輪對話作為 LLM 上下文 |
+| **Short-Circuit** | `agent_workflow.py` | AGGREGATE_INTENT 繞過 RAG 直走 Text-to-SQL，避免向量搜尋的不確定性 |
 
 ---
 
@@ -264,7 +279,7 @@ python -m src.indexer
 
 # 啟動後端 API
 python main.py
-# → http://localhost:8000
+# → http://localhost:7860
 ```
 
 **Step 2 — 前端**
@@ -273,6 +288,10 @@ python main.py
 cd frontend
 
 npm install
+
+# 設定後端 API 位置（本機開發用）
+echo "VITE_API_BASE=http://localhost:7860" > .env.local
+
 npm run dev
 # → http://localhost:5173
 ```
@@ -304,6 +323,7 @@ docker run -p 7860:7860 --env-file .env fitai
 | `POST` | `/api/auth/login` | ❌ | 登入取得 JWT |
 | `GET`  | `/api/auth/me` | 🔑 | 取得當前登入者資訊 |
 | `POST` | `/api/chat` | ⚡ Optional | 發問 (帶 Token = 個人化+記憶，不帶 = 匿名) |
+| `POST` | `/api/upload` | 🔑 | 上傳訓練紀錄文字，增量寫入 Qdrant + SQLite |
 | `GET`  | `/api/health` | ❌ | 系統健康檢查 |
 
 ### 自訂 LLM 提供者
@@ -335,10 +355,11 @@ graph LR
     V5["v5.0<br/>Multi-Tenancy<br/>Qdrant"]
     V6["v6.0<br/>Memory<br/>SQLite"]
     V7["v7.0<br/>前後端分離<br/>JWT Auth"]
+    V8["v8.0<br/>Text-to-SQL<br/>多租戶架構"]
     
-    V1 --> V2 --> V3 --> V4 --> V5 --> V6 --> V7
+    V1 --> V2 --> V3 --> V4 --> V5 --> V6 --> V7 --> V8
     
-    style V7 fill:#3B82F6,color:#fff
+    style V8 fill:#3B82F6,color:#fff
 ```
 
 1. **v1.0** — 單一 Python 腳本，直接丟檔案問 LLM
@@ -347,7 +368,8 @@ graph LR
 4. **v4.0** — Agentic Workflow：Self-Reflection + Query Rewrite 迴圈
 5. **v5.0** — 多租戶隔離：FAISS → Qdrant + user_id Metadata Filter
 6. **v6.0** — 長期記憶：SQLite 儲存 Sessions & Chat History
-7. **v7.0** — 前後端分離 + JWT 認證 + React Vite SPA ← **你在這裡**
+7. **v7.0** — 前後端分離 + JWT 認證 + React Vite SPA
+8. **v8.0** — Text-to-SQL 數值聚合查詢 + `data_type` 多租戶隔離 + 增量 Ingestion API ← **你在這裡**
 
 ### 如何貢獻
 
